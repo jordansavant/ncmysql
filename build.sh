@@ -1,4 +1,4 @@
 #!/bin/bash
 
-gcc src/main.c -lmysqlclient -lncurses -lmenu -o bin/a.out
+gcc src/main.c -lmysqlclient -lncurses -lmenu -lm -o bin/a.out
 
