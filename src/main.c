@@ -138,7 +138,8 @@ void run_con_interact(MYSQL *con, struct Connection *app_con) {
     MYSQL_RES *result = con_select(con, "SHOW DATABASES", &num_fields, &num_rows);
 
 	// allocate items
-	WINDOW *db_win = newwin(42, 42, 10, 10);//gui_new_center_win(10, 40, 40, 0);
+	WINDOW *db_win = gui_new_center_win(10, 40, 40, 0);
+    keypad(db_win, TRUE);
 
     // build a menu with items for each db
     ITEM **my_items;
@@ -158,9 +159,12 @@ void run_con_interact(MYSQL *con, struct Connection *app_con) {
     // create the menu, configure and set it to our subwindow
 	my_menu = new_menu((ITEM **)my_items);
 	set_menu_mark(my_menu, "@ ");
-	post_menu(my_menu);
 	set_menu_win(my_menu, db_win);
-	set_menu_sub(my_menu, derwin(db_win, num_rows, 40, 10, 10)); // (h, w, offx, offy) from parent window
+    box(db_win, 0, 0);
+	//set_menu_sub(my_menu, derwin(db_win, num_rows, 40, 10, 10)); // (h, w, offx, offy) from parent window
+
+	post_menu(my_menu);
+    wrefresh(db_win);
 
     // listen for input for the window selection
     int c;
