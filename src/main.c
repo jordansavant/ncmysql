@@ -162,7 +162,10 @@ void run_con_interact(MYSQL *con, struct Connection *app_con) {
 					dblen = maxi(d, dblen);
 				}
 				// allocate window for db menu
-				WINDOW *db_win = gui_new_center_win(10, dblen + 7, num_rows + 4, 0);
+				int frame_width = dblen + 7; // |_>_[label]_|
+				int frame_height = num_rows + 4;
+				int offset_rows = 10;
+				WINDOW *db_win = gui_new_center_win(offset_rows, frame_width, frame_height, 0);
 				keypad(db_win, TRUE);
 				// allocate menu
 				ITEM **my_items;
@@ -182,7 +185,7 @@ void run_con_interact(MYSQL *con, struct Connection *app_con) {
 				// set menu styles and into parent
 				set_menu_mark(my_menu, "> ");
 				set_menu_win(my_menu, db_win);
-				set_menu_sub(my_menu, derwin(db_win, num_rows, dblen + 4, 2, 2)); // (h, w, offy, offx) from parent window
+				set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 2, 2, 2)); // (h, w, offy, offx) from parent window
 				box(db_win, 0, 0);
 				// post menu to render and draw it first
 				post_menu(my_menu);
