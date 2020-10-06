@@ -1,0 +1,7 @@
+------- START -------
+MySQL client version: 5.7.31
+APP_STATE_START
+APP_STATE_CONNECTION_SELECT
+APP_STATE_CONNECT stsuser@sts.c0s9xnf5ze2m.us-east-1.rds.amazonaws.com
+APP_STATE_CONNECTION_INTERACT
+db select mysql
