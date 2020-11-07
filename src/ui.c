@@ -4,17 +4,20 @@
 void ui_setup()
 {
 	init_pair(COLOR_WHITE_BLACK,	COLOR_WHITE,	COLOR_BLACK);
-	init_pair(COLOR_RED_BLACK,	COLOR_RED,	COLOR_BLACK);
+	init_pair(COLOR_RED_BLACK,		COLOR_RED,		COLOR_BLACK);
 	init_pair(COLOR_BLACK_BLACK,	COLOR_BLACK,	COLOR_BLACK);
-	init_pair(COLOR_CYAN_BLACK,	COLOR_CYAN,	COLOR_BLACK);
+	init_pair(COLOR_CYAN_BLACK,		COLOR_CYAN,		COLOR_BLACK);
 	init_pair(COLOR_YELLOW_BLACK,	COLOR_YELLOW,	COLOR_BLACK);
-	init_pair(COLOR_PURPLE_BLACK,	COLOR_MAGENTA,	COLOR_BLACK);
+	init_pair(COLOR_MAGENTA_BLACK,	COLOR_MAGENTA,	COLOR_BLACK);
+	init_pair(COLOR_BLUE_BLACK,		COLOR_BLUE,		COLOR_BLACK);
 
-	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,	COLOR_WHITE);
+	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,		COLOR_WHITE);
 	init_pair(COLOR_WHITE_BLUE,	COLOR_WHITE,	COLOR_BLUE);
 	init_pair(COLOR_BLACK_CYAN,	COLOR_BLACK,	COLOR_CYAN);
 	init_pair(COLOR_WHITE_RED,	COLOR_WHITE,	COLOR_RED);
 	init_pair(COLOR_YELLOW_RED,	COLOR_YELLOW,	COLOR_RED);
+	init_pair(COLOR_CYAN_BLUE,	COLOR_CYAN,		COLOR_BLUE);
+	init_pair(COLOR_BLACK_WHITE,COLOR_BLACK,	COLOR_WHITE);
 }
 
 WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)
@@ -38,7 +41,7 @@ void ui_box_color(WINDOW* win, int colorpair)
 void ui_box(WINDOW* win)
 {
 	box(win, ACS_VLINE, ACS_HLINE);
-	//ui_box_color(win, COLOR_PURPLE_BLACK);
+	//ui_box_color(win, COLOR_MAGENTA_BLACK);
 }
 
 void ui_anchor_ur(WINDOW* win, int rows, int cols)

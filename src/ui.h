@@ -6,13 +6,16 @@
 #define COLOR_BLACK_BLACK	4
 #define COLOR_CYAN_BLACK	5
 #define COLOR_YELLOW_BLACK	6
-#define COLOR_PURPLE_BLACK	9
+#define COLOR_MAGENTA_BLACK	9
+#define COLOR_BLUE_BLACK	10
 
-#define COLOR_BLUE_WHITE	10
-#define COLOR_WHITE_BLUE	11
-#define COLOR_BLACK_CYAN	12
-#define COLOR_WHITE_RED		13
-#define COLOR_YELLOW_RED	14
+#define COLOR_BLUE_WHITE	11
+#define COLOR_WHITE_BLUE	12
+#define COLOR_BLACK_CYAN	13
+#define COLOR_WHITE_RED		14
+#define COLOR_YELLOW_RED	15
+#define COLOR_CYAN_BLUE		16
+#define COLOR_BLACK_WHITE	17
 
 void ui_setup();
 WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols);

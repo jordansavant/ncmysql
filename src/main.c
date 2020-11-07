@@ -105,6 +105,8 @@ enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
 // GLOBAL WINDOWS
 //
 WINDOW* error_window;
+WINDOW* cmd_window;
+WINDOW* str_window;
 #define ERR_WIN_W	48
 #define ERR_WIN_H	12
 
@@ -250,11 +252,20 @@ void app_setup() {
 	xlogopen("logs/log", "w+");
 	ui_setup();
 
-	//error_window = newwir(0, 0, 0, 0);
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+
+	// TODO deal with window resize
+	//error_window = newwim(0, 0, 0, 0);
 	error_window = ui_new_center_win(16, 0, ERR_WIN_H, ERR_WIN_W);
+	// newwin(numrows, numcols, beginy, beginx);
+	str_window = newwin(1, sx, sy - 2, 0);
+	cmd_window = newwin(1, sx, sy - 1, 0);
 }
 
 void app_teardown() {
+	delwin(str_window);
+	delwin(cmd_window);
 	delwin(error_window);
 	xlogclose();
 	ncurses_teardown();
@@ -268,6 +279,35 @@ void die(const char *msg) {
 	exit(1);
 }
 
+
+void display_cmd(char *mode, char *cmd) {
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+
+	wmove(cmd_window, 0, 0);
+	wclrtoeol(cmd_window);
+	wattrset(cmd_window, COLOR_PAIR(COLOR_YELLOW_BLACK));
+	waddstr(cmd_window, mode);
+	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
+	wmove(cmd_window, 0, 12);
+	waddstr(cmd_window, cmd);
+
+	wrefresh(cmd_window);
+}
+
+void display_str(char *str) {
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+	wbkgd(str_window, COLOR_PAIR(COLOR_BLACK_WHITE));
+
+	wmove(str_window, 0, 0);
+	wclrtoeol(str_window);
+	wattrset(str_window, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
+	waddstr(str_window, str);
+
+	wrefresh(str_window);
+}
+
 int errlinepos = 0;
 void display_error_on_line(const char *line) {
 	wmove(error_window, 3 + errlinepos++, 2);
@@ -276,6 +316,7 @@ void display_error_on_line(const char *line) {
 void display_error(const char *string) {
 	// clear all of the application
 	clear();
+	refresh();
 	wbkgd(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
 
 	// render the error message
@@ -289,7 +330,6 @@ void display_error(const char *string) {
 	waddstr(error_window, "x: close");
 
 	do {
-		refresh();
 		wrefresh(error_window);
 	} while (getch() != KEY_x);
 }
@@ -306,6 +346,7 @@ void on_db_select(char *database) {
 
 void run_db_select(MYSQL *con, struct Connection *app_con) {
 
+	refresh();
 	switch (db_select_state) {
 
 		// TODO, should we detect if the database is still selected?
@@ -314,7 +355,6 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 
 		case DB_SELECT_STATE_START:
 			xlog(" DB_SELECT_STATE_START");
-			refresh();
 			db_select_state = DB_SELECT_STATE_SELECT_DB;
 			break;
 
@@ -424,6 +464,7 @@ MYSQL_RES* tbl_result = NULL;
 #define TBL_STR_FMT		"%-256s"
 
 void run_db_interact(MYSQL *con) {
+
 	int sx, sy;
 	getmaxyx(stdscr,sy,sx);
 	int tbl_pad_h = TBL_PAD_H;
@@ -476,8 +517,8 @@ void run_db_interact(MYSQL *con) {
 
 		case DB_STATE_INTERACT:
 			xlog(" DB_STATE_INTERACT");
-			// draw the panels
 			refresh();
+			// draw the panels
 
 			// print the tables
 			MYSQL_ROW row;
@@ -489,7 +530,10 @@ void run_db_interact(MYSQL *con) {
 				wmove(tbl_pad, r, c);
 				// highlight focused table
 				if (i == tbl_index) {
-					wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
+					if (interact_state == INTERACT_STATE_TABLE_LIST)
+						wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
+					else
+						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
 				} else {
 					wattrset(tbl_pad, COLOR_PAIR(0));
 				}
@@ -499,7 +543,7 @@ void run_db_interact(MYSQL *con) {
 				waddstr(tbl_pad, buffer);
 				r++; i++;
 			}
-			//wrefresh(tbl_pad);
+
 			// draw the pad, position within pad, to position within screen
 			// shift the listing to show the highlighted table
 			int pad_row_offset = 0;
@@ -507,11 +551,8 @@ void run_db_interact(MYSQL *con) {
 			if (tbl_index > tbl_render_h - bottom_padding) {
 				pad_row_offset = tbl_index - tbl_render_h + bottom_padding;
 			}
-			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
-
 
 			// print the query panel
-
 
 			// print the results panel
 
@@ -520,38 +561,24 @@ void run_db_interact(MYSQL *con) {
 				case INTERACT_STATE_TABLE_LIST: {
 					// string bar
 					// print the table title fully since they can be cut off
-					move(sy - 2, 0);
-					clrtoeol();
-					attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
 					mysql_data_seek(tbl_result, tbl_index);
 					MYSQL_ROW r = mysql_fetch_row(tbl_result);
-					addstr(r[0]);
+					display_str(r[0]);
 
 					// command bar
-					move(sy - 1, 0);
-					clrtoeol();
-					attrset(COLOR_PAIR(COLOR_YELLOW_BLACK) | A_BOLD);
-					addstr("TABLE MODE");
-					attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-					move(sy - 1, 12);
-					addstr("x: close | enter: select table | d: describe");
+					display_cmd("TABLE MODE", "x: close | enter: select table | d: describe");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
-					// string bar
-					move(sy - 2, 0);
-					clrtoeol();
+					// string bar (none)
 
 					// command bar
-					move(sy - 1, 0);
-					clrtoeol();
-					attrset(COLOR_PAIR(COLOR_YELLOW_BLACK) | A_BOLD);
-					addstr("QUERY MODE");
-					attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-					move(sy - 1, 12);
-					addstr("tab: next | x: close | i: insert");
+					display_cmd("QUERY MODE", "tab: next | x: close | i: insert");
 					break;
 			}
+
+			// pads need to be refreshed after windows
+			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
 
 
 			// print the string bar
