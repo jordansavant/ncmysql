@@ -95,6 +95,13 @@ enum DB_STATE {
 };
 enum DB_STATE db_state = DB_STATE_START;
 
+enum INTERACT_STATE {
+	INTERACT_STATE_TABLE_LIST,
+	INTERACT_STATE_QUERY,
+	INTERACT_STATE_RESULTS,
+};
+enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
+
 // GLOBAL WINDOWS
 //
 WINDOW* error_window;
@@ -421,7 +428,7 @@ void run_db_interact(MYSQL *con) {
 	getmaxyx(stdscr,sy,sx);
 	int tbl_pad_h = TBL_PAD_H;
 	int tbl_pad_w = TBL_PAD_W;
-	int tbl_render_h = sy - 1;
+	int tbl_render_h = sy - 3; // -1 for index, -1 for command bar, -1 for string bar
 	int tbl_render_w = 32;
 
 	switch (db_state) {
@@ -472,8 +479,6 @@ void run_db_interact(MYSQL *con) {
 			// draw the panels
 			refresh();
 
-			// get the tables
-
 			// print the tables
 			MYSQL_ROW row;
 			int r = 0; int c = 0; int i = 0;
@@ -498,24 +503,64 @@ void run_db_interact(MYSQL *con) {
 			// draw the pad, position within pad, to position within screen
 			// shift the listing to show the highlighted table
 			int pad_row_offset = 0;
-			if (tbl_index > tbl_render_h) {
-				pad_row_offset = tbl_index - tbl_render_h;
+			int bottom_padding = 0;
+			if (tbl_index > tbl_render_h - bottom_padding) {
+				pad_row_offset = tbl_index - tbl_render_h + bottom_padding;
 			}
 			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
 
-			// listen for input
-			int key = getch();
-			if (key == KEY_x) {
-				db_state = DB_STATE_END;
+
+			// print the query panel
+
+
+			// print the results panel
+
+			// print the command bar
+			switch (interact_state) {
+				case INTERACT_STATE_TABLE_LIST:
+					// string bar
+					// print the table title fully since they can be cut off
+					move(sy - 2, 0);
+					clrtoeol();
+					attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+					mysql_data_seek(tbl_result, tbl_index);
+					MYSQL_ROW r = mysql_fetch_row(tbl_result);
+					addstr(r[0]);
+
+					// command bar
+					move(sy - 1, 0);
+					clrtoeol();
+					attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+					addstr("x: close | enter: select table | d: describe");
+					break;
 			}
-			else if(key == KEY_UP || key == KEY_DOWN) {
-				// navigate in table window
-				if (key == KEY_UP)
-					tbl_index = (tbl_index - 1) % tbl_count;
-				if (key == KEY_DOWN)
-					tbl_index = (tbl_index + 1) % tbl_count;
-				if (tbl_index < 0)
-					tbl_index = tbl_count + tbl_index;
+
+
+			// print the string bar
+
+			// depending on which context I am in:
+			// - table list, query, results, interact differently
+
+			switch (interact_state) {
+				case INTERACT_STATE_TABLE_LIST: {
+					// listen for input
+					int key = getch();
+					switch (key) {
+						case KEY_x:
+							db_state = DB_STATE_END;
+							break;
+						case KEY_UP:
+						case KEY_DOWN:
+							if (key == KEY_UP)
+								tbl_index = (tbl_index - 1) % tbl_count;
+							if (key == KEY_DOWN)
+								tbl_index = (tbl_index + 1) % tbl_count;
+							if (tbl_index < 0)
+								tbl_index = tbl_count + tbl_index;
+							break;
+					}
+					break;
+				}
 			}
 
 			break;
