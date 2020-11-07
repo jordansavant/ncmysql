@@ -300,9 +300,14 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 }
 
 // DB PANELS
-WINDOW* tbl_window;
+WINDOW* tbl_pad;
 
 void run_db_interact(MYSQL *con) {
+	int sx, sy;
+	getmaxyx(stdscr,sy,sx);
+	int tbl_width = 28;
+	int tbl_height = sy - 1; // screen height
+
 	switch (db_state) {
 		case DB_STATE_START: {
 			xlog(" DB_STATE_START");
@@ -310,14 +315,13 @@ void run_db_interact(MYSQL *con) {
 			// left side is the table menu
 			// center top is the query window
 			// center bottom is the result window
-			int sx, sy;
-			getmaxyx(stdscr,sy,sx);
-			tbl_window = newwin(0,0,0,0);
+			//tbl_pad = newwin(0,0,0,0);
+			tbl_pad = newpad(tbl_height, tbl_width); // h, w
 
 			// inventory window
-			int rows = sy; int cols = 28;
-			ui_anchor_ul(tbl_window, rows, cols);
-			ui_box(tbl_window);
+			//int rows = sy; int cols = 28;
+			//ui_anchor_ul(tbl_pad, rows, cols);
+			//ui_box(tbl_pad);
 
 			// populate the db table listing
 
@@ -338,16 +342,16 @@ void run_db_interact(MYSQL *con) {
 
 			// print the tables
 			MYSQL_ROW row;
-			int r = 1; int c = 1;
+			int r = 0; int c = 0;
 			while (row = mysql_fetch_row(result)) {
 				xlog(row[0]);
-				wmove(tbl_window, r, c);
-				waddstr(tbl_window, "-");
-				wmove(tbl_window, r, c+2);
-				waddstr(tbl_window, row[0]);
+				wmove(tbl_pad, r, c);
+				waddstr(tbl_pad, row[0]);
 				r++;
 			}
-			wrefresh(tbl_window);
+			//wrefresh(tbl_pad);
+			// draw the pad, position within pad, to position within screen
+			prefresh(tbl_pad, 0, 0, 0, 0, tbl_height, tbl_width);
 
 			// listen for input
 			if (getch() == KEY_x)
@@ -357,7 +361,7 @@ void run_db_interact(MYSQL *con) {
 		case DB_STATE_END:
 			xlog(" DB_STATE_END");
 			// tear down curses windows
-			delwin(tbl_window);
+			delwin(tbl_pad);
 			clear();
 			db_selected = false;
 			app_state = APP_STATE_DB_INTERACT_END;

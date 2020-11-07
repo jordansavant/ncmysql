@@ -46,9 +46,7 @@ MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 }
 
 MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *errcode) {
-    int r;
-	if (r = mysql_query(con, "SHOW DATABASES")) {
-        *errcode = r;
+	if (*errcode = mysql_query(con, query)) {
         return NULL;
 	}
 
