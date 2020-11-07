@@ -1,9 +1,16 @@
 #include <mysql/mysql.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 // implemented by main application
 void die(const char *msg);
+
+int _maxi(int a, int b) {
+	if (a > b)
+		return a;
+	return b;
+}
 
 //void die_error(int error_code) {
 //    switch (error_code) {
@@ -38,10 +45,39 @@ MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 	return result;
 }
 
+MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *errcode) {
+    int r;
+	if (r = mysql_query(con, "SHOW DATABASES")) {
+        *errcode = r;
+        return NULL;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL) {
+        die(mysql_error(con));
+	}
+
+	*num_fields = mysql_num_fields(result);
+	*num_rows = mysql_num_rows(result);
+	return result;
+}
+
 void db_select(MYSQL *con, char *db) {
     if (mysql_select_db(con, db)) {
         die(mysql_error(con));
     }
+}
+
+int col_size(MYSQL_RES* result, int index) {
+    MYSQL_ROW row;
+    mysql_data_seek(result, 0);
+    int len = 0;
+    while (row = mysql_fetch_row(result)) {
+        int d = (int)strlen(row[index]);
+        len = _maxi(d, len);
+    }
+    mysql_data_seek(result, 0);
+    return len;
 }
 
 //bool get_database(MYSQL *con, char *buf) {

@@ -315,7 +315,7 @@ void run_db_interact(MYSQL *con) {
 			tbl_window = newwin(0,0,0,0);
 
 			// inventory window
-			int rows = sy; int cols = 20;
+			int rows = sy; int cols = 28;
 			ui_anchor_ul(tbl_window, rows, cols);
 			ui_box(tbl_window);
 
@@ -330,8 +330,23 @@ void run_db_interact(MYSQL *con) {
 			// draw the panels
 			refresh();
 
-			wmove(tbl_window, 1, 1);
-			waddstr(tbl_window, "this is a test");
+			// get the tables
+			int num_fields, num_rows, errcode;
+			MYSQL_RES* result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &errcode);
+			int max_table_name = col_size(result, 0);
+			xlogf("%d, %d, %d\n", num_rows, num_fields, errcode);
+
+			// print the tables
+			MYSQL_ROW row;
+			int r = 1; int c = 1;
+			while (row = mysql_fetch_row(result)) {
+				xlog(row[0]);
+				wmove(tbl_window, r, c);
+				waddstr(tbl_window, "-");
+				wmove(tbl_window, r, c+2);
+				waddstr(tbl_window, row[0]);
+				r++;
+			}
 			wrefresh(tbl_window);
 
 			// listen for input
