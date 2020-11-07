@@ -133,7 +133,7 @@ void xlogf(char *format, ...) {
 
 
 
-void dm_splitstr(char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
+void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
 	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
 	// split the text int a bunch of sub strings that represent the words
 	int wordcount = 0;
@@ -191,7 +191,7 @@ void dm_lines(int m, int n, char words[m][n], int sentence_size, int o, int p, c
 	}
 	*linelen = linepos + 1;
 }
-void dm_wordwrap(char *text, int size, void (*on_line)(char *line)) {
+void dm_wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
 	int wordlen = 0;
 	char words[1056][32];
 	dm_splitstr(text, ' ', 1056, 32, words, &wordlen);
@@ -262,11 +262,11 @@ void die(const char *msg) {
 }
 
 int errlinepos = 0;
-void display_error_on_line(char *line) {
+void display_error_on_line(const char *line) {
 	wmove(error_window, 3 + errlinepos++, 2);
 	waddstr(error_window, line);
 };
-void display_error(char *string) {
+void display_error(const char *string) {
 	// clear all of the application
 	clear();
 	wbkgd(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
@@ -325,11 +325,12 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 				dblen = maxi(d, dblen);
 			}
 			// allocate window for db menu
-			int frame_width = dblen + 7; // |_>_[label]_|
-			int frame_height = num_rows + 4;
+			int frame_width = dblen + 5;// 7; // |_>_[label]_|
+			int frame_height = num_rows + 2;
 			int offset_rows = 10;
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
+			wbkgd(db_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 			keypad(db_win, TRUE);
 			// allocate menu
 			ITEM **my_items;
@@ -347,10 +348,12 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			my_items[num_rows] = (ITEM*)NULL; // final element should be null
 			my_menu = new_menu((ITEM **)my_items);
 			// set menu styles and into parent
-			set_menu_mark(my_menu, "> ");
+			set_menu_fore(my_menu, COLOR_PAIR(COLOR_BLACK_CYAN));
+			set_menu_back(my_menu, COLOR_PAIR(COLOR_WHITE_BLUE));
+			set_menu_grey(my_menu, COLOR_PAIR(COLOR_YELLOW_RED));
+			set_menu_mark(my_menu, "");
 			set_menu_win(my_menu, db_win);
-			set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 2, 2, 2)); // (h, w, offy, offx) from parent window
-			box(db_win, 0, 0);
+			set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 4, 1, 2)); // (h, w, offy, offx) from parent window
 			// post menu to render and draw it first
 			post_menu(my_menu);
 			wrefresh(db_win);
@@ -493,7 +496,12 @@ void run_db_interact(MYSQL *con) {
 			}
 			//wrefresh(tbl_pad);
 			// draw the pad, position within pad, to position within screen
-			prefresh(tbl_pad, 0, 0, 0, 0, tbl_render_h, tbl_render_w);
+			// shift the listing to show the highlighted table
+			int pad_row_offset = 0;
+			if (tbl_index > tbl_render_h) {
+				pad_row_offset = tbl_index - tbl_render_h;
+			}
+			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
 
 			// listen for input
 			int key = getch();
@@ -566,13 +574,13 @@ int main(int argc, char **argv) {
 				// create mysql connection
 				con = mysql_init(NULL);
 				if (con == NULL) {
-					fprintf(stderr, "%s\n", mysql_error(con));
-					return 1;
+                    display_error(mysql_error(con));
+                    app_state = APP_STATE_END;
 				}
 				if (mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, 0, NULL, 0) == NULL) {
-					fprintf(stderr, "%s\n", mysql_error(con));
+                    display_error(mysql_error(con));
 					mysql_close(con);
-					return 1;
+                    app_state = APP_STATE_END;
 				}
 
 				conn_established = true;
@@ -621,6 +629,7 @@ int main(int argc, char **argv) {
 				selected_mysql_conn = NULL;
 				app_state = APP_STATE_END;
 				break;
+
 			case APP_STATE_END:
 				xlogf("APP_STATE_END\n");
 				run = false;
