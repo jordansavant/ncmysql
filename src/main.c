@@ -305,8 +305,10 @@ WINDOW* tbl_pad;
 void run_db_interact(MYSQL *con) {
 	int sx, sy;
 	getmaxyx(stdscr,sy,sx);
-	int tbl_width = 28;
-	int tbl_height = sy - 1; // screen height
+	int tbl_pad_h = 256;
+	int tbl_pad_w = 256;
+	int tbl_render_h = sy - 1;
+	int tbl_render_w = 32;
 
 	switch (db_state) {
 		case DB_STATE_START: {
@@ -316,7 +318,7 @@ void run_db_interact(MYSQL *con) {
 			// center top is the query window
 			// center bottom is the result window
 			//tbl_pad = newwin(0,0,0,0);
-			tbl_pad = newpad(tbl_height, tbl_width); // h, w
+			tbl_pad = newpad(tbl_pad_h, tbl_pad_w); // h, w
 
 			// inventory window
 			//int rows = sy; int cols = 28;
@@ -338,20 +340,22 @@ void run_db_interact(MYSQL *con) {
 			int num_fields, num_rows, errcode;
 			MYSQL_RES* result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &errcode);
 			int max_table_name = col_size(result, 0);
-			xlogf("%d, %d, %d\n", num_rows, num_fields, errcode);
+			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 
 			// print the tables
 			MYSQL_ROW row;
 			int r = 0; int c = 0;
+			wbkgd(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+			//wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 			while (row = mysql_fetch_row(result)) {
-				xlog(row[0]);
+				xlogf("- %s\n", row[0]);
 				wmove(tbl_pad, r, c);
 				waddstr(tbl_pad, row[0]);
 				r++;
 			}
 			//wrefresh(tbl_pad);
 			// draw the pad, position within pad, to position within screen
-			prefresh(tbl_pad, 0, 0, 0, 0, tbl_height, tbl_width);
+			prefresh(tbl_pad, 0, 0, 0, 0, tbl_render_h, tbl_render_w);
 
 			// listen for input
 			if (getch() == KEY_x)

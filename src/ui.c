@@ -3,12 +3,15 @@
 
 void ui_setup()
 {
-	init_pair(TCOLOR_NORMAL,	COLOR_WHITE,	COLOR_BLACK);
-	init_pair(TCOLOR_RED,		COLOR_RED,	COLOR_BLACK);
-	init_pair(TCOLOR_BLACK,		COLOR_BLACK,	COLOR_BLACK);
-	init_pair(TCOLOR_CYAN,		COLOR_CYAN,	COLOR_BLACK);
-	init_pair(TCOLOR_YELLOW,	COLOR_YELLOW,	COLOR_BLACK);
-	init_pair(TCOLOR_PURPLE,	COLOR_MAGENTA,	COLOR_BLACK);
+	init_pair(COLOR_WHITE_BLACK,	COLOR_WHITE,	COLOR_BLACK);
+	init_pair(COLOR_RED_BLACK,	COLOR_RED,	COLOR_BLACK);
+	init_pair(COLOR_BLACK_BLACK,	COLOR_BLACK,	COLOR_BLACK);
+	init_pair(COLOR_CYAN_BLACK,	COLOR_CYAN,	COLOR_BLACK);
+	init_pair(COLOR_YELLOW_BLACK,	COLOR_YELLOW,	COLOR_BLACK);
+	init_pair(COLOR_PURPLE_BLACK,	COLOR_MAGENTA,	COLOR_BLACK);
+
+	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,	COLOR_WHITE);
+	init_pair(COLOR_WHITE_BLUE,	COLOR_WHITE,	COLOR_BLUE);
 }
 
 void ui_box_color(WINDOW* win, int colorpair)
@@ -18,12 +21,12 @@ void ui_box_color(WINDOW* win, int colorpair)
 	//wborder(win, '|', '|', '-', '-', '+', '+', '+', '+');
 	wattrset(win, COLOR_PAIR(colorpair));
 	//wborder(win, '|', '|', '=', '=', '@', '@', '@', '@');
-	wattrset(win, COLOR_PAIR(TCOLOR_NORMAL));
+	wattrset(win, COLOR_PAIR(COLOR_WHITE_BLACK));
 }
 
 void ui_box(WINDOW* win)
 {
-	ui_box_color(win, TCOLOR_PURPLE);
+	ui_box_color(win, COLOR_PURPLE_BLACK);
 }
 
 void ui_anchor_ur(WINDOW* win, int rows, int cols)
