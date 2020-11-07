@@ -13,6 +13,16 @@ void ui_setup()
 	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,	COLOR_WHITE);
 	init_pair(COLOR_WHITE_BLUE,	COLOR_WHITE,	COLOR_BLUE);
 	init_pair(COLOR_BLACK_CYAN,	COLOR_BLACK,	COLOR_CYAN);
+	init_pair(COLOR_WHITE_RED,	COLOR_WHITE,	COLOR_RED);
+	init_pair(COLOR_YELLOW_RED,	COLOR_YELLOW,	COLOR_RED);
+}
+
+WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)
+{
+	int y, x, indent;
+	getmaxyx(stdscr, y, x);
+	indent = (x - cols) / 2 + offset_col;
+	return newwin(rows, cols, offset_row, indent);
 }
 
 void ui_box_color(WINDOW* win, int colorpair)
@@ -20,14 +30,15 @@ void ui_box_color(WINDOW* win, int colorpair)
 	box(win, ACS_VLINE, ACS_HLINE);
 	//box(win, ':', '-');
 	//wborder(win, '|', '|', '-', '-', '+', '+', '+', '+');
-	wattrset(win, COLOR_PAIR(colorpair));
+	//wattrset(win, COLOR_PAIR(colorpair));
 	//wborder(win, '|', '|', '=', '=', '@', '@', '@', '@');
-	wattrset(win, COLOR_PAIR(COLOR_WHITE_BLACK));
+	//wattrset(win, COLOR_PAIR(COLOR_WHITE_BLACK));
 }
 
 void ui_box(WINDOW* win)
 {
-	ui_box_color(win, COLOR_PURPLE_BLACK);
+	box(win, ACS_VLINE, ACS_HLINE);
+	//ui_box_color(win, COLOR_PURPLE_BLACK);
 }
 
 void ui_anchor_ur(WINDOW* win, int rows, int cols)

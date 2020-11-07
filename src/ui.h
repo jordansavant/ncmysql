@@ -11,8 +11,11 @@
 #define COLOR_BLUE_WHITE	10
 #define COLOR_WHITE_BLUE	11
 #define COLOR_BLACK_CYAN	12
+#define COLOR_WHITE_RED		13
+#define COLOR_YELLOW_RED	14
 
 void ui_setup();
+WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols);
 void ui_box_color(WINDOW* win, int colorpair);
 void ui_box(WINDOW* win);
 void ui_anchor_ur(WINDOW* win, int rows, int cols);

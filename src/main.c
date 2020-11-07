@@ -51,19 +51,8 @@
 #define KEY_8		56
 #define KEY_9		57
 
-//  dblist v |  query  |  exit
-//  -------------------------------------------------
-//  table    |  col   col     col     col     col
-//  table    |
-//  table    |
-//  table    |
-
-// modes
-// - start
-// - no conf
-// - select connection
-// - table view
-// - query view
+// DB CONNECTION INFORMATION
+//
 struct Connection {
 	char *host;
 	char *user;
@@ -74,6 +63,8 @@ bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
 
+// STATE MACHINES
+//
 enum APP_STATE {
 	APP_STATE_START,
 	APP_STATE_CONNECTION_SELECT,
@@ -104,20 +95,21 @@ enum DB_STATE {
 };
 enum DB_STATE db_state = DB_STATE_START;
 
+// GLOBAL WINDOWS
+//
+WINDOW* error_window;
+#define ERR_WIN_W	48
+#define ERR_WIN_H	12
+
+
+// FUNCTIONS
+//
 int maxi(int a, int b) {
 	if (a > b)
 		return a;
 	return b;
 }
 
-// get a center a window in std
-WINDOW* gui_new_center_win(int row, int width, int height, int offset_x)
-{
-	int y, x, indent;
-	getmaxyx(stdscr, y, x);
-	indent = (x - width) / 2 + offset_x;
-	return newwin(height, width, row, indent);
-}
 
 FILE* _fp;
 void xlogopen(char *location, char *mode) {
@@ -138,6 +130,83 @@ void xlogf(char *format, ...) {
 	va_end(argptr);
 	fflush(_fp);
 }
+
+
+
+void dm_splitstr(char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
+	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
+	// split the text int a bunch of sub strings that represent the words
+	int wordcount = 0;
+	int spacepos = 0;
+	for (int i=0; i < strlen(text) + 1; i++) {
+		if (text[i] == splitter || text[i] == '\n' || text[i] == '\0') {
+			// copy characters from last space pos to current position
+			int wordsize = i - spacepos;
+			memcpy(&words[wordcount], &text[spacepos], wordsize);
+			words[wordcount][wordsize] = '\0';
+			//xlogf("wordcount %d wordsize %d spacepos %d i %d [%s]\n", wordcount, wordsize, spacepos, i, words[wordcount]);
+			spacepos = i + 1;
+			wordcount++;
+		}
+		if (text[i] == '\n') {
+			// we ran into a newline, we want to split and make the prior contents a word, then also inject another word for newline after it
+			// special newline word
+			words[wordcount][0] = '\n';
+			words[wordcount][1] = '\0';
+			wordcount++;
+		}
+	}
+	*wordlen = wordcount;
+}
+void dm_lines(int m, int n, char words[m][n], int sentence_size, int o, int p, char lines[o][p], int *linelen) {
+	// take a collection of words that are null terminated and a sentence size
+	// and copy them into the lines buffer
+	int cursize = 0;
+	int linepos = 0;
+	for (int i=0; i < m; i++) {
+		char *word = words[i];
+		int wordsize = strlen(word);
+		//xlogf("compare %d + %d < %d\n", cursize, wordsize, sentence_size);
+		if (word[0] == '\n') {
+			// its a newline word, move to next line, reset space pos
+			cursize = 0;
+			linepos++;
+		}
+		else if (cursize + wordsize < sentence_size) {
+			// append word to line
+			//xlogf("append word [%s]\n", word);
+			memcpy(&lines[linepos][cursize], word, wordsize);
+			lines[linepos][cursize + wordsize] = ' ';
+			lines[linepos][cursize + wordsize + 1] = '\0';
+			cursize += wordsize + 1;
+		} else {
+			// move to next line, copy the word there
+			//xlogf("overflow sentence, start word [%s]\n", word);
+			linepos++;
+			memcpy(&lines[linepos], word, wordsize);
+			lines[linepos][wordsize] = ' ';
+			lines[linepos][wordsize + 1] = '\0';
+			cursize = wordsize + 1;
+		}
+	}
+	*linelen = linepos + 1;
+}
+void dm_wordwrap(char *text, int size, void (*on_line)(char *line)) {
+	int wordlen = 0;
+	char words[1056][32];
+	dm_splitstr(text, ' ', 1056, 32, words, &wordlen);
+
+	int linelen = 0;
+	char lines[64][1056];
+	dm_lines(wordlen, 32, words, size, 64, 1056, lines, &linelen);
+
+	for (int i=0; i<linelen; i++) {
+		char *line = lines[i]; // null terminated
+		on_line(line);
+	}
+}
+
+
 
 int W = 0;
 int H = 0;
@@ -173,9 +242,13 @@ void app_setup() {
 		exit(1);
 	xlogopen("logs/log", "w+");
 	ui_setup();
+
+	//error_window = newwir(0, 0, 0, 0);
+	error_window = ui_new_center_win(16, 0, ERR_WIN_H, ERR_WIN_W);
 }
 
 void app_teardown() {
+	delwin(error_window);
 	xlogclose();
 	ncurses_teardown();
 }
@@ -187,6 +260,36 @@ void die(const char *msg) {
 	printf("DIE %s\n", msg);
 	exit(1);
 }
+
+int errlinepos = 0;
+void display_error_on_line(char *line) {
+	wmove(error_window, 3 + errlinepos++, 2);
+	waddstr(error_window, line);
+};
+void display_error(char *string) {
+	// clear all of the application
+	clear();
+	wbkgd(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+
+	// render the error message
+	wmove(error_window, 1, 2);
+	waddstr(error_window, "ERROR");
+	errlinepos = 0;
+	dm_wordwrap(string, ERR_WIN_W - 4, display_error_on_line); // avoid gcc nested function supporta
+
+	// render x: close
+	wmove(error_window, ERR_WIN_H - 2, 2);
+	waddstr(error_window, "x: close");
+
+	do {
+		refresh();
+		wrefresh(error_window);
+	} while (getch() != KEY_x);
+}
+
+
+
+
 
 void on_db_select(char *database) {
 	xlogf("db select %s\n", database);
@@ -225,7 +328,8 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			int frame_width = dblen + 7; // |_>_[label]_|
 			int frame_height = num_rows + 4;
 			int offset_rows = 10;
-			WINDOW *db_win = gui_new_center_win(offset_rows, frame_width, frame_height, 0);
+			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
+			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 			keypad(db_win, TRUE);
 			// allocate menu
 			ITEM **my_items;
@@ -351,10 +455,13 @@ void run_db_interact(MYSQL *con) {
 		}
 
 		case DB_STATE_NOTABLES:
+			xlog(" DB_STATE_NOTABLES");
 			// if there are no tables we need to print an interrupt error
 			// and return to db selection
-			// for now we will DIE
-			die("NO TABLES FOUND");
+			display_error("No tables were found in the selected database");
+
+			db_state = DB_STATE_END;
+
 			break;
 
 		case DB_STATE_INTERACT:
@@ -371,7 +478,6 @@ void run_db_interact(MYSQL *con) {
 			//wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 			mysql_data_seek(tbl_result, 0);
 			while (row = mysql_fetch_row(tbl_result)) {
-				xlogf("- %s\n", row[0]);
 				wmove(tbl_pad, r, c);
 				// highlight focused table
 				if (i == tbl_index) {
@@ -400,6 +506,8 @@ void run_db_interact(MYSQL *con) {
 					tbl_index = (tbl_index - 1) % tbl_count;
 				if (key == KEY_DOWN)
 					tbl_index = (tbl_index + 1) % tbl_count;
+				if (tbl_index < 0)
+					tbl_index = tbl_count + tbl_index;
 			}
 
 			break;
