@@ -98,6 +98,7 @@ enum DB_SELECT_STATE db_select_state = DB_SELECT_STATE_START;
 
 enum DB_STATE {
 	DB_STATE_START,
+	DB_STATE_NOTABLES,
 	DB_STATE_INTERACT,
 	DB_STATE_END,
 };
@@ -300,13 +301,19 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 }
 
 // DB PANELS
-WINDOW* tbl_pad;
+WINDOW* tbl_pad = NULL;
+int tbl_index = 0;
+int tbl_count = 0;
+MYSQL_RES* tbl_result = NULL;
+#define TBL_PAD_H		256
+#define TBL_PAD_W		256
+#define TBL_STR_FMT		"%-256s"
 
 void run_db_interact(MYSQL *con) {
 	int sx, sy;
 	getmaxyx(stdscr,sy,sx);
-	int tbl_pad_h = 256;
-	int tbl_pad_w = 256;
+	int tbl_pad_h = TBL_PAD_H;
+	int tbl_pad_w = TBL_PAD_W;
 	int tbl_render_h = sy - 1;
 	int tbl_render_w = 32;
 
@@ -319,6 +326,9 @@ void run_db_interact(MYSQL *con) {
 			// center bottom is the result window
 			//tbl_pad = newwin(0,0,0,0);
 			tbl_pad = newpad(tbl_pad_h, tbl_pad_w); // h, w
+			tbl_index = 0; // default to first table
+			tbl_count = 0;
+			tbl_result = NULL;
 
 			// inventory window
 			//int rows = sy; int cols = 28;
@@ -326,10 +336,26 @@ void run_db_interact(MYSQL *con) {
 			//ui_box(tbl_pad);
 
 			// populate the db table listing
+			int num_fields, num_rows, errcode;
+			tbl_result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &errcode);
+			// TODO handle errocode failure
+			int max_table_name = col_size(tbl_result, 0);
+			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
+			tbl_count = num_rows;
 
-			db_state = DB_STATE_INTERACT;
+			if (tbl_count == 0)
+				db_state = DB_STATE_NOTABLES;
+			else
+				db_state = DB_STATE_INTERACT;
 			break;
 		}
+
+		case DB_STATE_NOTABLES:
+			// if there are no tables we need to print an interrupt error
+			// and return to db selection
+			// for now we will DIE
+			die("NO TABLES FOUND");
+			break;
 
 		case DB_STATE_INTERACT:
 			xlog(" DB_STATE_INTERACT");
@@ -337,29 +363,45 @@ void run_db_interact(MYSQL *con) {
 			refresh();
 
 			// get the tables
-			int num_fields, num_rows, errcode;
-			MYSQL_RES* result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &errcode);
-			int max_table_name = col_size(result, 0);
-			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 
 			// print the tables
 			MYSQL_ROW row;
-			int r = 0; int c = 0;
+			int r = 0; int c = 0; int i = 0;
 			wbkgd(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 			//wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
-			while (row = mysql_fetch_row(result)) {
+			mysql_data_seek(tbl_result, 0);
+			while (row = mysql_fetch_row(tbl_result)) {
 				xlogf("- %s\n", row[0]);
 				wmove(tbl_pad, r, c);
-				waddstr(tbl_pad, row[0]);
-				r++;
+				// highlight focused table
+				if (i == tbl_index) {
+					wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
+				} else {
+					wattrset(tbl_pad, COLOR_PAIR(0));
+				}
+				// print table name with padding for focused background coloring
+				char buffer[tbl_pad_w];
+				sprintf(buffer, TBL_STR_FMT, row[0]);
+				waddstr(tbl_pad, buffer);
+				r++; i++;
 			}
 			//wrefresh(tbl_pad);
 			// draw the pad, position within pad, to position within screen
 			prefresh(tbl_pad, 0, 0, 0, 0, tbl_render_h, tbl_render_w);
 
 			// listen for input
-			if (getch() == KEY_x)
+			int key = getch();
+			if (key == KEY_x) {
 				db_state = DB_STATE_END;
+			}
+			else if(key == KEY_UP || key == KEY_DOWN) {
+				// navigate in table window
+				if (key == KEY_UP)
+					tbl_index = (tbl_index - 1) % tbl_count;
+				if (key == KEY_DOWN)
+					tbl_index = (tbl_index + 1) % tbl_count;
+			}
+
 			break;
 
 		case DB_STATE_END:

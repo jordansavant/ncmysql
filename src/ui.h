@@ -10,6 +10,7 @@
 
 #define COLOR_BLUE_WHITE	10
 #define COLOR_WHITE_BLUE	11
+#define COLOR_BLACK_CYAN	12
 
 void ui_setup();
 void ui_box_color(WINDOW* win, int colorpair);

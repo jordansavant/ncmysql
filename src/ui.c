@@ -12,6 +12,7 @@ void ui_setup()
 
 	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,	COLOR_WHITE);
 	init_pair(COLOR_WHITE_BLUE,	COLOR_WHITE,	COLOR_BLUE);
+	init_pair(COLOR_BLACK_CYAN,	COLOR_BLACK,	COLOR_CYAN);
 }
 
 void ui_box_color(WINDOW* win, int colorpair)
