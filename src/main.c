@@ -517,7 +517,7 @@ void run_db_interact(MYSQL *con) {
 
 			// print the command bar
 			switch (interact_state) {
-				case INTERACT_STATE_TABLE_LIST:
+				case INTERACT_STATE_TABLE_LIST: {
 					// string bar
 					// print the table title fully since they can be cut off
 					move(sy - 2, 0);
@@ -530,8 +530,26 @@ void run_db_interact(MYSQL *con) {
 					// command bar
 					move(sy - 1, 0);
 					clrtoeol();
+					attrset(COLOR_PAIR(COLOR_YELLOW_BLACK) | A_BOLD);
+					addstr("TABLE MODE");
 					attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+					move(sy - 1, 12);
 					addstr("x: close | enter: select table | d: describe");
+					break;
+				}
+				case INTERACT_STATE_QUERY:
+					// string bar
+					move(sy - 2, 0);
+					clrtoeol();
+
+					// command bar
+					move(sy - 1, 0);
+					clrtoeol();
+					attrset(COLOR_PAIR(COLOR_YELLOW_BLACK) | A_BOLD);
+					addstr("QUERY MODE");
+					attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+					move(sy - 1, 12);
+					addstr("tab: next | x: close | i: insert");
 					break;
 			}
 
@@ -543,11 +561,15 @@ void run_db_interact(MYSQL *con) {
 
 			switch (interact_state) {
 				case INTERACT_STATE_TABLE_LIST: {
+					xlog("  INTERACT_STATE_TABLE_LIST");
 					// listen for input
 					int key = getch();
 					switch (key) {
 						case KEY_x:
 							db_state = DB_STATE_END;
+							break;
+						case KEY_TAB:
+							interact_state = INTERACT_STATE_QUERY;
 							break;
 						case KEY_UP:
 						case KEY_DOWN:
@@ -557,6 +579,19 @@ void run_db_interact(MYSQL *con) {
 								tbl_index = (tbl_index + 1) % tbl_count;
 							if (tbl_index < 0)
 								tbl_index = tbl_count + tbl_index;
+							break;
+					}
+					break;
+				}
+				case INTERACT_STATE_QUERY: {
+					xlog("  INTERACT_STATE_QUERY");
+					int key = getch();
+					switch (key) {
+						case KEY_x:
+							db_state = DB_STATE_END;
+							break;
+						case KEY_TAB:
+							interact_state = INTERACT_STATE_TABLE_LIST;
 							break;
 					}
 					break;
