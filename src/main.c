@@ -5,12 +5,51 @@
 #include <string.h>
 #include <stdbool.h>
 #include "sqlops.h"
+#include "ui.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define KEY_RETURN	10
 #define KEY_ESC		27
 #define KEY_SPACE	32
 #define KEY_TAB		9
+
+#define KEY_a		97
+#define KEY_b		98
+#define KEY_c		99
+#define KEY_d		100
+#define KEY_e		101
+#define KEY_f		102
+#define KEY_g		103
+#define KEY_h		104
+#define KEY_i		105
+#define KEY_j		106
+#define KEY_k		107
+#define KEY_l		108
+#define KEY_m		109
+#define KEY_n		110
+#define KEY_o		111
+#define KEY_p		112
+#define KEY_q		113
+#define KEY_r		114
+#define KEY_s		115
+#define KEY_t		116
+#define KEY_u		117
+#define KEY_v		118
+#define KEY_w		119
+#define KEY_x		120
+#define KEY_y		121
+#define KEY_z		122
+
+#define KEY_0		48
+#define KEY_1		49
+#define KEY_2		50
+#define KEY_3		51
+#define KEY_4		52
+#define KEY_5		53
+#define KEY_6		54
+#define KEY_7		55
+#define KEY_8		56
+#define KEY_9		57
 
 //  dblist v |  query  |  exit
 //  -------------------------------------------------
@@ -41,19 +80,28 @@ enum APP_STATE {
 	APP_STATE_CONNECTION_CREATE,
 	APP_STATE_CONNECT,
 	APP_STATE_DB_SELECT,
+	APP_STATE_DB_SELECT_END,
 	APP_STATE_DB_INTERACT,
+	APP_STATE_DB_INTERACT_END,
 	APP_STATE_DISCONNECT,
 	APP_STATE_END,
 	APP_STATE_DIE,
 };
 enum APP_STATE app_state = APP_STATE_START;
 
-enum CON_STATE {
-	CON_STATE_START,
-	CON_STATE_SELECT_DB,
-	CON_STATE_START_DB,
+enum DB_SELECT_STATE {
+	DB_SELECT_STATE_START,
+	DB_SELECT_STATE_SELECT_DB,
+	DB_SELECT_STATE_END,
 };
-enum CON_STATE con_state = CON_STATE_START;
+enum DB_SELECT_STATE db_select_state = DB_SELECT_STATE_START;
+
+enum DB_STATE {
+	DB_STATE_START,
+	DB_STATE_INTERACT,
+	DB_STATE_END,
+};
+enum DB_STATE db_state = DB_STATE_START;
 
 int maxi(int a, int b) {
 	if (a > b)
@@ -123,6 +171,7 @@ void app_setup() {
 	if (!ncurses_setup())
 		exit(1);
 	xlogopen("logs/log", "w+");
+	ui_setup();
 }
 
 void app_teardown() {
@@ -142,29 +191,28 @@ void on_db_select(char *database) {
 	xlogf("db select %s\n", database);
 	db_select(selected_mysql_conn, database);
 	db_selected = true;
-	app_state = APP_STATE_DB_INTERACT;
 }
 
 void run_db_select(MYSQL *con, struct Connection *app_con) {
 
-	switch (con_state) {
+	switch (db_select_state) {
 
 		// TODO, should we detect if the database is still selected?
 		// and if it changes (eg typed in USE command) we change our state to
 		// STATE START?
 
-		case CON_STATE_START:
-			xlogf(" CON_STATE_START\n");
+		case DB_SELECT_STATE_START:
+			xlog(" DB_SELECT_STATE_START");
 			refresh();
-			con_state = CON_STATE_SELECT_DB;
+			db_select_state = DB_SELECT_STATE_SELECT_DB;
 			break;
 
-		case CON_STATE_SELECT_DB: {
-			xlogf(" CON_STATE_SELECT_DB\n");
+		case DB_SELECT_STATE_SELECT_DB: {
+			xlog(" DB_SELECT_STATE_SELECT_DB");
 			//die("this is a test");
 			// Get DBs
 			int num_fields, num_rows;
-			MYSQL_RES *result = con_select(con, "SHOW DATABASES", &num_fields, &num_rows);
+			MYSQL_RES *result = con_select(con, &num_fields, &num_rows);
 			// determine widest db name
 			int dblen = 0;
 			MYSQL_ROW row1;
@@ -202,7 +250,8 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			post_menu(my_menu);
 			wrefresh(db_win);
 			// listen for input for the window selection
-			while(!db_selected) {
+			bool done = false;
+			while(!done) {
 				int c = getch();
 				switch(c) {
 					case KEY_DOWN:
@@ -218,10 +267,16 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 						   callback((char *)item_name(cur_item));
 						   pos_menu_cursor(my_menu);
 						   if (db_selected) {
-							   con_state = CON_STATE_START_DB;
+							   done = true;
+							   db_select_state = DB_SELECT_STATE_END;
 							   break;
 						   }
 					   }
+					   break;
+					case KEY_x:
+					   // db_selected is false
+					   done = true;
+					   db_select_state = DB_SELECT_STATE_END;
 					   break;
 				}
 				wrefresh(db_win);
@@ -233,8 +288,65 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			free_menu(my_menu);
 			delwin(db_win);
 			mysql_free_result(result); // free sql memory
+			clear();
 			break;
 		}
+
+		case DB_SELECT_STATE_END:
+			xlog(" DB_SELECT_STATE_END");
+			app_state = APP_STATE_DB_SELECT_END;
+			break;
+	}
+}
+
+// DB PANELS
+WINDOW* tbl_window;
+
+void run_db_interact(MYSQL *con) {
+	switch (db_state) {
+		case DB_STATE_START: {
+			xlog(" DB_STATE_START");
+			// build the curses windows
+			// left side is the table menu
+			// center top is the query window
+			// center bottom is the result window
+			int sx, sy;
+			getmaxyx(stdscr,sy,sx);
+			tbl_window = newwin(0,0,0,0);
+
+			// inventory window
+			int rows = sy; int cols = 20;
+			ui_anchor_ul(tbl_window, rows, cols);
+			ui_box(tbl_window);
+
+			// populate the db table listing
+
+			db_state = DB_STATE_INTERACT;
+			break;
+		}
+
+		case DB_STATE_INTERACT:
+			xlog(" DB_STATE_INTERACT");
+			// draw the panels
+			refresh();
+
+			wmove(tbl_window, 1, 1);
+			waddstr(tbl_window, "this is a test");
+			wrefresh(tbl_window);
+
+			// listen for input
+			if (getch() == KEY_x)
+				db_state = DB_STATE_END;
+			break;
+
+		case DB_STATE_END:
+			xlog(" DB_STATE_END");
+			// tear down curses windows
+			delwin(tbl_window);
+			clear();
+			db_selected = false;
+			app_state = APP_STATE_DB_INTERACT_END;
+			break;
 	}
 }
 
@@ -265,16 +377,16 @@ int main(int argc, char **argv) {
 				app_cons[0].user = argv[2];
 				app_cons[0].pass = argv[3];
 				app_state = APP_STATE_CONNECTION_SELECT;
-
 				break;
+
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
 
 				// ncurses menu to show a list of connections to choose from
 				app_con = &app_cons[0];
 				app_state = APP_STATE_CONNECT;
-
 				break;
+
 			case APP_STATE_CONNECT:
 				xlogf("APP_STATE_CONNECT %s@%s\n", app_con->user, app_con->host);
 
@@ -294,18 +406,36 @@ int main(int argc, char **argv) {
 				selected_mysql_conn = con;
 				app_state = APP_STATE_DB_SELECT;
 				break;
+
 			case APP_STATE_DB_SELECT:
 				xlogf("APP_STATE_DB_SELECT\n");
-				// when the db is selected enter into run_db_interact
+				// show menu to select db for the connection
 				run_db_select(con, app_con);
+
+				break;
+
+			case APP_STATE_DB_SELECT_END:
+				xlog("APP_STATE_DB_SELECT_END");
+				db_select_state = DB_SELECT_STATE_START; // reset select state for future
+				if (db_selected)
+					app_state = APP_STATE_DB_INTERACT;
+				else
+					app_state = APP_STATE_DISCONNECT;
 				break;
 
 			case APP_STATE_DB_INTERACT:
 				xlogf("APP_STATE_DB_INTERACT\n");
 
-				//run_dn_interact(con, app_con);
+				// with a db selected lets run the selected db state
+				run_db_interact(con);
 
-				app_state = APP_STATE_DISCONNECT;
+				//app_state = APP_STATE_DISCONNECT;
+				break;
+
+			case APP_STATE_DB_INTERACT_END:
+				xlog("APP_STATE_DB_INTERACT_END");
+				db_state = DB_STATE_START; // reset db state
+				app_state = APP_STATE_DB_SELECT; // go to select db
 				break;
 
 			case APP_STATE_DISCONNECT:

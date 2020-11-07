@@ -23,7 +23,7 @@ void die(const char *msg);
 //    }
 //}
 //
-MYSQL_RES* con_select(MYSQL *con, char *query, int *num_fields, int *num_rows) {
+MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 	if (mysql_query(con, "SHOW DATABASES")) {
         die(mysql_error(con));
 	}
