@@ -156,6 +156,15 @@ void xlogf(char *format, ...) {
 	fflush(_fp);
 }
 
+int charreplace(char *str, char orig, char rep) {
+	char *ix = str;
+	int n = 0;
+	while((ix = strchr(ix, orig)) != NULL) {
+		*ix++ = rep;
+		n++;
+	}
+	return n;
+}
 
 void strclr(char *string, int size) {
 	for (int i = 0; i < size; i++) {
@@ -285,7 +294,7 @@ void app_setup() {
 	cmd_window = newwin(1, sx, sy - 1, 0);
 	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1, 0, TBL_LIST_W + 1);
 	//result_pad = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
-	result_pad = newpad(2056,2056);//12, 24);
+	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
 
 	strclr(the_query, QUERY_MAX);
 }
@@ -492,6 +501,7 @@ void set_query(char *query) {
 
 void execute_query() {
 	int errcode;
+	xlog(the_query);
 	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &errcode);
 	if (!the_result) {
 		display_error(mysql_error(selected_mysql_conn));
@@ -607,7 +617,7 @@ void run_db_interact(MYSQL *con) {
 			// print the results panel
 			// TODO clear the window
 			xlog("  before result write");
-			wbkgd(result_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
+			wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 			if (the_result) {
 				// get field data
 				MYSQL_FIELD *field_data[the_num_fields];
@@ -640,8 +650,14 @@ void run_db_interact(MYSQL *con) {
 						// after a random null character because im not that concerned about rendering out contents of BLOBs with that
 						// shitty data in it
 						char buffer[imaxf + 2];
+						charreplace(row[i], '\t', '_');
+						charreplace(row[i], '\n', '_');
+						charreplace(row[i], '\r', '_');
 						snprintf(buffer, imaxf + 2, " %*s", imaxf, row[i]);
+						wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
 						waddstr(result_pad, buffer);
+						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+						waddstr(result_pad, " | ");
 						//for (unsigned long j = 0; j < max_field_length; j++) {
 						//	char character = row[i][j];
 						//	if (character > 31 && character < 127) {
@@ -688,10 +704,7 @@ void run_db_interact(MYSQL *con) {
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
 			int rp_y = QUERY_WIN_H;
 			int rp_x = tbl_render_w + 1;
-			int rp_vertspace = sy - rp_y - 2; // -2 for cmd and str bar
-			int rp_horzspace = sx - rp_x;
-			xlogf("%d,%d %d,%d\n", rp_y,rp_x, rp_vertspace,rp_horzspace);
-			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1);// rp_y+rp_vertspace, rp_x+rp_horzspace);// QUERY_WIN_H+1,tbl_render_w+1, QUERY_WIN_H+1 + ,24+tbl_render_w+1);
+			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1);
 
 
 			// depending on which context I am in:
@@ -710,7 +723,12 @@ void run_db_interact(MYSQL *con) {
 							interact_state = INTERACT_STATE_QUERY;
 							break;
 						case KEY_d:
-							set_query("SELECT * FROM wp_terms LIMIT 100");
+							set_query("SELECT * FROM wp_posts LIMIT 100");
+							execute_query();
+							break;
+						case KEY_RETURN:
+							// TODO get the current table and inject that into the query
+							set_query("SELECT * FROM wp_posts LIMIT 100");
 							execute_query();
 							break;
 						case KEY_UP:
