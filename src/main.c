@@ -62,6 +62,10 @@ struct Connection app_cons[20];
 bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
+#define QUERY_MAX	4096
+char the_query[QUERY_MAX];
+MYSQL_RES* the_result = NULL;
+int the_num_fields=0, the_num_rows=0;
 
 // STATE MACHINES
 //
@@ -107,8 +111,20 @@ enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
 WINDOW* error_window;
 WINDOW* cmd_window;
 WINDOW* str_window;
+WINDOW* query_window;
+WINDOW* result_window;
 #define ERR_WIN_W	48
 #define ERR_WIN_H	12
+#define QUERY_WIN_H	12
+
+WINDOW* tbl_pad = NULL;
+int tbl_index = 0;
+int tbl_count = 0;
+MYSQL_RES* tbl_result = NULL;
+#define TBL_PAD_H		256
+#define TBL_PAD_W		256
+#define TBL_STR_FMT		"%-256s"
+#define TBL_LIST_W		32
 
 
 // FUNCTIONS
@@ -140,6 +156,12 @@ void xlogf(char *format, ...) {
 	fflush(_fp);
 }
 
+
+void strclr(char *string, int size) {
+	for (int i = 0; i < size; i++) {
+		string[i] = '\0';
+	}
+}
 
 
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
@@ -261,9 +283,15 @@ void app_setup() {
 	// newwin(numrows, numcols, beginy, beginx);
 	str_window = newwin(1, sx, sy - 2, 0);
 	cmd_window = newwin(1, sx, sy - 1, 0);
+	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1, 0, TBL_LIST_W + 1);
+	result_window = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
+
+	strclr(the_query, QUERY_MAX);
 }
 
 void app_teardown() {
+	delwin(result_window);
+	delwin(query_window);
 	delwin(str_window);
 	delwin(cmd_window);
 	delwin(error_window);
@@ -455,13 +483,19 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 }
 
 // DB PANELS
-WINDOW* tbl_pad = NULL;
-int tbl_index = 0;
-int tbl_count = 0;
-MYSQL_RES* tbl_result = NULL;
-#define TBL_PAD_H		256
-#define TBL_PAD_W		256
-#define TBL_STR_FMT		"%-256s"
+
+void set_query(char *query) {
+	strclr(the_query, QUERY_MAX);
+	strcpy(the_query, query);
+}
+
+void execute_query() {
+	int errcode;
+	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &errcode);
+	if (!the_result) {
+		display_error(mysql_error(selected_mysql_conn));
+	}
+}
 
 void run_db_interact(MYSQL *con) {
 
@@ -470,7 +504,7 @@ void run_db_interact(MYSQL *con) {
 	int tbl_pad_h = TBL_PAD_H;
 	int tbl_pad_w = TBL_PAD_W;
 	int tbl_render_h = sy - 3; // -1 for index, -1 for command bar, -1 for string bar
-	int tbl_render_w = 32;
+	int tbl_render_w = TBL_LIST_W;
 
 	switch (db_state) {
 		case DB_STATE_START: {
@@ -553,9 +587,50 @@ void run_db_interact(MYSQL *con) {
 			}
 
 			// print the query panel
+			// TODO clear the window
+			wbkgd(query_window, COLOR_PAIR(COLOR_YELLOW_RED));
+			wmove(query_window, 0, 0);
+			waddstr(query_window, the_query);
+			wrefresh(query_window);
 
 			// print the results panel
+			// TODO clear the window
+			wbkgd(result_window, COLOR_PAIR(COLOR_BLACK_CYAN));
+			if (the_result) {
+				// get field data
+				MYSQL_FIELD *field_data[the_num_fields];
+				MYSQL_FIELD *f; int findex = 0;
+				int x = 0;
+				while (f = mysql_fetch_field(the_result)) {
+					field_data[findex++] = f;
+					xlogf("%d %d field: %s %lu %lu\n", x++, the_num_fields, f->name, f->length, f->max_length);
+				}
 
+				// print rows
+				int result_row = 0;
+				mysql_data_seek(the_result, 0);
+				MYSQL_ROW row;
+				while (row = mysql_fetch_row(the_result)) {
+					wmove(result_window, result_row++, 2);
+					//waddstr(result_window, row[0]);
+					for (int i=0; i < the_num_fields; i++) {
+						MYSQL_FIELD *f = field_data[i];
+						char *data = row[i];
+						unsigned long field_length = f->length; // size of column
+						unsigned long max_field_length = f->max_length; // size of biggest value in column
+
+						// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
+						for (unsigned long charcount = 0; charcount < max_field_length; charcount++) {
+							waddch(result_window, data[charcount]);
+						}
+						waddstr(result_window, "    ");
+					}
+				}
+			}
+
+			wrefresh(result_window);
+
+			// print the string bar
 			// print the command bar
 			switch (interact_state) {
 				case INTERACT_STATE_TABLE_LIST: {
@@ -566,7 +641,7 @@ void run_db_interact(MYSQL *con) {
 					display_str(r[0]);
 
 					// command bar
-					display_cmd("TABLE MODE", "x: close | enter: select table | d: describe");
+					display_cmd("TABLE MODE", "x:close | s/ent:select-1000 | d:describe");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
@@ -580,8 +655,6 @@ void run_db_interact(MYSQL *con) {
 			// pads need to be refreshed after windows
 			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
 
-
-			// print the string bar
 
 			// depending on which context I am in:
 			// - table list, query, results, interact differently
@@ -597,6 +670,10 @@ void run_db_interact(MYSQL *con) {
 							break;
 						case KEY_TAB:
 							interact_state = INTERACT_STATE_QUERY;
+							break;
+						case KEY_d:
+							set_query("SELECT * FROM wp_terms LIMIT 100");
+							execute_query();
 							break;
 						case KEY_UP:
 						case KEY_DOWN:
