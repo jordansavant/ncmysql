@@ -16,6 +16,10 @@
 #define COLOR_YELLOW_RED	15
 #define COLOR_CYAN_BLUE		16
 #define COLOR_BLACK_WHITE	17
+#define COLOR_BLACK_BLUE	18
+#define COLOR_BLACK_YELLOW	19
+#define COLOR_BLACK_MAGENTA	20
+#define COLOR_BLACK_RED		21
 
 void ui_setup();
 WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols);

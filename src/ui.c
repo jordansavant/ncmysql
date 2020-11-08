@@ -18,6 +18,10 @@ void ui_setup()
 	init_pair(COLOR_YELLOW_RED,	COLOR_YELLOW,	COLOR_RED);
 	init_pair(COLOR_CYAN_BLUE,	COLOR_CYAN,		COLOR_BLUE);
 	init_pair(COLOR_BLACK_WHITE,COLOR_BLACK,	COLOR_WHITE);
+	init_pair(COLOR_BLACK_BLUE,	COLOR_BLACK,	COLOR_BLUE);
+	init_pair(COLOR_BLACK_YELLOW,COLOR_BLACK,	COLOR_YELLOW);
+	init_pair(COLOR_BLACK_MAGENTA,COLOR_BLACK,	COLOR_MAGENTA);
+	init_pair(COLOR_BLACK_RED,	COLOR_BLACK,	COLOR_RED);
 }
 
 WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)

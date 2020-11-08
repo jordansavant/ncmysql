@@ -292,7 +292,8 @@ void app_setup() {
 	// newwin(numrows, numcols, beginy, beginx);
 	str_window = newwin(1, sx, sy - 2, 0);
 	cmd_window = newwin(1, sx, sy - 1, 0);
-	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1, 0, TBL_LIST_W + 1);
+	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1 -2,  0, TBL_LIST_W + 1 + 2); // plus2 for gutter
+	//query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 3, 0, TBL_LIST_W + 2);
 	//result_pad = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
 	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
 
@@ -324,7 +325,7 @@ void display_cmd(char *mode, char *cmd) {
 
 	wmove(cmd_window, 0, 0);
 	wclrtoeol(cmd_window);
-	wattrset(cmd_window, COLOR_PAIR(COLOR_YELLOW_BLACK));
+	wattrset(cmd_window, COLOR_PAIR(COLOR_CYAN_BLACK) | A_BOLD);
 	waddstr(cmd_window, mode);
 	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
 	wmove(cmd_window, 0, 12);
@@ -365,7 +366,10 @@ void display_error(const char *string) {
 
 	// render x: close
 	wmove(error_window, ERR_WIN_H - 2, 2);
-	waddstr(error_window, "x: close");
+	waddstr(error_window, "x:close");
+	//waddch(error_window, 'c');
+	//wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+	//waddstr(error_window, "lose");
 
 	do {
 		wrefresh(error_window);
@@ -575,11 +579,11 @@ void run_db_interact(MYSQL *con) {
 			refresh();
 			// draw the panels
 
-			// print the tables
+			////////////////////////////////////////////////
+			// PRINT THE TABLES
 			MYSQL_ROW row;
 			int r = 0; int c = 0; int i = 0;
 			wbkgd(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
-			//wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 			mysql_data_seek(tbl_result, 0);
 			while (row = mysql_fetch_row(tbl_result)) {
 				wmove(tbl_pad, r, c);
@@ -588,7 +592,7 @@ void run_db_interact(MYSQL *con) {
 					if (interact_state == INTERACT_STATE_TABLE_LIST)
 						wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
 					else
-						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
+						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
 				} else {
 					wattrset(tbl_pad, COLOR_PAIR(0));
 				}
@@ -607,16 +611,20 @@ void run_db_interact(MYSQL *con) {
 				pad_row_offset = tbl_index - tbl_render_h + bottom_padding;
 			}
 
-			// print the query panel
+			//////////////////////////////////////////////
+			// PRINT THE QUERY PANEL
 			// TODO clear the window
-			wbkgd(query_window, COLOR_PAIR(COLOR_YELLOW_RED));
+			if (interact_state == INTERACT_STATE_QUERY)
+				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+			else
+				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK));
 			wmove(query_window, 0, 0);
 			waddstr(query_window, the_query);
 			wrefresh(query_window);
 
-			// print the results panel
+			//////////////////////////////////////////////
+			// PRINT THE RESULTS PANEL
 			// TODO clear the window
-			xlog("  before result write");
 			wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 			if (the_result) {
 				// get field data
@@ -650,14 +658,17 @@ void run_db_interact(MYSQL *con) {
 						// after a random null character because im not that concerned about rendering out contents of BLOBs with that
 						// shitty data in it
 						char buffer[imaxf + 2];
-						charreplace(row[i], '\t', '_');
-						charreplace(row[i], '\n', '_');
-						charreplace(row[i], '\r', '_');
+						charreplace(row[i], '\t', ' ');
+						charreplace(row[i], '\n', ' ');
+						charreplace(row[i], '\r', ' ');
 						snprintf(buffer, imaxf + 2, " %*s", imaxf, row[i]);
-						wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
-						waddstr(result_pad, buffer);
+						// TODO color based on data type
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-						waddstr(result_pad, " | ");
+						waddstr(result_pad, buffer);
+						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+						waddch(result_pad, ' ');
+						waddch(result_pad, ACS_CKBOARD);
+						waddch(result_pad, ' ');
 						//for (unsigned long j = 0; j < max_field_length; j++) {
 						//	char character = row[i][j];
 						//	if (character > 31 && character < 127) {
@@ -672,7 +683,6 @@ void run_db_interact(MYSQL *con) {
 					}
 				}
 			}
-			xlog("  after result write");
 
 			// print the string bar
 			// print the command bar
@@ -702,10 +712,19 @@ void run_db_interact(MYSQL *con) {
 			// pads need to be refreshed after windows
 			// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:x-inscreen,w-onscreen)
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
-			int rp_y = QUERY_WIN_H;
-			int rp_x = tbl_render_w + 1;
-			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1);
+			int rp_y = QUERY_WIN_H + 1;
+			int rp_x = tbl_render_w + 1 + 2;
+			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
 
+			////////////////////////////////////////////
+			// GUTTERS / DIVIDERS
+			attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
+			// vert
+			move(0,tbl_render_w + 1);
+			vline(' ', tbl_render_h + 1);
+			// horiz
+			move(QUERY_WIN_H,tbl_render_w + 1 + 1);
+			hline(' ',256);
 
 			// depending on which context I am in:
 			// - table list, query, results, interact differently
