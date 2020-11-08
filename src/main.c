@@ -112,7 +112,7 @@ WINDOW* error_window;
 WINDOW* cmd_window;
 WINDOW* str_window;
 WINDOW* query_window;
-WINDOW* result_window;
+WINDOW* result_pad;
 #define ERR_WIN_W	48
 #define ERR_WIN_H	12
 #define QUERY_WIN_H	12
@@ -284,13 +284,14 @@ void app_setup() {
 	str_window = newwin(1, sx, sy - 2, 0);
 	cmd_window = newwin(1, sx, sy - 1, 0);
 	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1, 0, TBL_LIST_W + 1);
-	result_window = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
+	//result_pad = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
+	result_pad = newpad(2056,2056);//12, 24);
 
 	strclr(the_query, QUERY_MAX);
 }
 
 void app_teardown() {
-	delwin(result_window);
+	delwin(result_pad);
 	delwin(query_window);
 	delwin(str_window);
 	delwin(cmd_window);
@@ -497,6 +498,16 @@ void execute_query() {
 	}
 }
 
+void clear_query() {
+	the_num_fields = 0;
+	the_num_rows = 0;
+	if (the_result) {
+		mysql_free_result(the_result); // free sql memory
+		the_result = NULL;
+	}
+	strclr(the_query, QUERY_MAX);
+}
+
 void run_db_interact(MYSQL *con) {
 
 	int sx, sy;
@@ -595,40 +606,57 @@ void run_db_interact(MYSQL *con) {
 
 			// print the results panel
 			// TODO clear the window
-			wbkgd(result_window, COLOR_PAIR(COLOR_BLACK_CYAN));
+			xlog("  before result write");
+			wbkgd(result_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
 			if (the_result) {
 				// get field data
 				MYSQL_FIELD *field_data[the_num_fields];
 				MYSQL_FIELD *f; int findex = 0;
 				int x = 0;
+				mysql_field_seek(the_result, 0);
 				while (f = mysql_fetch_field(the_result)) {
 					field_data[findex++] = f;
-					xlogf("%d %d field: %s %lu %lu\n", x++, the_num_fields, f->name, f->length, f->max_length);
+					//xlogf("%d %d field: %s %lu %lu\n", x++, the_num_fields, f->name, f->length, f->max_length);
 				}
 
 				// print rows
 				int result_row = 0;
-				mysql_data_seek(the_result, 0);
 				MYSQL_ROW row;
+				mysql_data_seek(the_result, 0);
 				while (row = mysql_fetch_row(the_result)) {
-					wmove(result_window, result_row++, 2);
-					//waddstr(result_window, row[0]);
+					wmove(result_pad, result_row++, 0);
+					//waddstr(result_pad, row[0]);
 					for (int i=0; i < the_num_fields; i++) {
 						MYSQL_FIELD *f = field_data[i];
-						char *data = row[i];
 						unsigned long field_length = f->length; // size of column
 						unsigned long max_field_length = f->max_length; // size of biggest value in column
+						if (max_field_length > 32) {
+							max_field_length = 32;
+						}
+						int imaxf = (int)max_field_length + 3;
 
 						// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
-						for (unsigned long charcount = 0; charcount < max_field_length; charcount++) {
-							waddch(result_window, data[charcount]);
-						}
-						waddstr(result_window, "    ");
+						// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
+						// after a random null character because im not that concerned about rendering out contents of BLOBs with that
+						// shitty data in it
+						char buffer[imaxf + 2];
+						snprintf(buffer, imaxf + 2, " %*s", imaxf, row[i]);
+						waddstr(result_pad, buffer);
+						//for (unsigned long j = 0; j < max_field_length; j++) {
+						//	char character = row[i][j];
+						//	if (character > 31 && character < 127) {
+						//		// ASCII
+						//		waddch(result_pad, character);
+						//	} else {
+						//		// TODO detect UTF-8, new lines, null chars etc
+						//		waddch(result_pad, ACS_CKBOARD);
+						//	}
+						//}
+						//waddstr(result_pad, "    ");
 					}
 				}
 			}
-
-			wrefresh(result_window);
+			xlog("  after result write");
 
 			// print the string bar
 			// print the command bar
@@ -652,8 +680,18 @@ void run_db_interact(MYSQL *con) {
 					break;
 			}
 
+
+			int sx, sy;
+			getmaxyx(stdscr, sy, sx);
 			// pads need to be refreshed after windows
-			prefresh(tbl_pad, pad_row_offset, 0, 0, 0, tbl_render_h, tbl_render_w);
+			// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:x-inscreen,w-onscreen)
+			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
+			int rp_y = QUERY_WIN_H;
+			int rp_x = tbl_render_w + 1;
+			int rp_vertspace = sy - rp_y - 2; // -2 for cmd and str bar
+			int rp_horzspace = sx - rp_x;
+			xlogf("%d,%d %d,%d\n", rp_y,rp_x, rp_vertspace,rp_horzspace);
+			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1);// rp_y+rp_vertspace, rp_x+rp_horzspace);// QUERY_WIN_H+1,tbl_render_w+1, QUERY_WIN_H+1 + ,24+tbl_render_w+1);
 
 
 			// depending on which context I am in:
@@ -706,9 +744,14 @@ void run_db_interact(MYSQL *con) {
 
 		case DB_STATE_END:
 			xlog(" DB_STATE_END");
-			// tear down curses windows
 			delwin(tbl_pad);
 			clear();
+			// clear main query
+			clear_query();
+			// clear table list query
+			mysql_free_result(tbl_result); // free sql memory
+			tbl_result = NULL;
+			// unset db
 			db_selected = false;
 			app_state = APP_STATE_DB_INTERACT_END;
 			break;
