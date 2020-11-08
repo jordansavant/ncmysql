@@ -663,12 +663,45 @@ void run_db_interact(MYSQL *con) {
 						charreplace(row[i], '\r', ' ');
 						snprintf(buffer, imaxf + 2, " %*s", imaxf, row[i]);
 						// TODO color based on data type
-						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+						switch (f->type) {
+							case MYSQL_TYPE_TINY:
+							case MYSQL_TYPE_SHORT:
+							case MYSQL_TYPE_LONG:
+							case MYSQL_TYPE_INT24:
+							case MYSQL_TYPE_LONGLONG:
+								wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
+								break;
+							case MYSQL_TYPE_DECIMAL:
+							case MYSQL_TYPE_NEWDECIMAL:
+							case MYSQL_TYPE_FLOAT:
+							case MYSQL_TYPE_DOUBLE:
+							case MYSQL_TYPE_BIT:
+								wattrset(result_pad, COLOR_PAIR(COLOR_MAGENTA_BLACK));
+								break;
+							case MYSQL_TYPE_DATETIME:
+							case MYSQL_TYPE_DATE:
+							case MYSQL_TYPE_TIME:
+								wattrset(result_pad, COLOR_PAIR(COLOR_BLUE_BLACK) | A_BOLD);
+								break;
+							default:
+								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+								break;
+						}
 						waddstr(result_pad, buffer);
+
+						// divider
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
 						waddch(result_pad, ' ');
 						waddch(result_pad, ACS_CKBOARD);
 						waddch(result_pad, ' ');
+
+						//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+						//waddch(result_pad, ' ');
+						//wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
+						//waddch(result_pad, ' ');
+						//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+						//waddch(result_pad, ' ');
+
 						//for (unsigned long j = 0; j < max_field_length; j++) {
 						//	char character = row[i][j];
 						//	if (character > 31 && character < 127) {
