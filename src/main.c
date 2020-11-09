@@ -13,6 +13,8 @@
 #define KEY_SPACE	32
 #define KEY_TAB		9
 
+#define KEY_ctrl_e	5
+
 #define KEY_a		97
 #define KEY_b		98
 #define KEY_c		99
@@ -107,6 +109,12 @@ enum INTERACT_STATE {
 	INTERACT_STATE_RESULTS,
 };
 enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
+
+enum QUERY_STATE {
+	QUERY_STATE_COMMAND,
+	QUERY_STATE_EDIT,
+};
+enum QUERY_STATE query_state = QUERY_STATE_COMMAND;
 
 // GLOBAL WINDOWS
 //
@@ -575,6 +583,7 @@ void run_db_interact(MYSQL *con) {
 			tbl_count = num_rows;
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
+			query_state = QUERY_STATE_COMMAND;
 
 			if (tbl_count == 0)
 				db_state = DB_STATE_NOTABLES;
@@ -811,7 +820,10 @@ void run_db_interact(MYSQL *con) {
 				case INTERACT_STATE_QUERY:
 					// string bar (none)
 					// command bar
-					display_cmd("QUERY MODE", "i:insert | tab:next | x:close");
+					if (query_state == QUERY_STATE_COMMAND)
+						display_cmd("QUERY MODE", "e/i:edit | tab:next | x:close");
+					else
+						display_cmd("EDIT QUERY", "esc:exit | tab:next | x:close");
 					break;
 				case INTERACT_STATE_RESULTS:
 					// string bar (none)
@@ -845,7 +857,10 @@ void run_db_interact(MYSQL *con) {
 			hline(' ',256);
 			// focus lines
 			if (interact_state == INTERACT_STATE_QUERY) {
-				attrset(COLOR_PAIR(COLOR_BLACK_CYAN));
+				if (query_state == QUERY_STATE_COMMAND)
+					attrset(COLOR_PAIR(COLOR_BLACK_CYAN));
+				else
+					attrset(COLOR_PAIR(COLOR_BLACK_RED));
 				move(0, tbl_render_w + 2);
 				vline(' ', QUERY_WIN_H);
 			} else {
@@ -911,19 +926,38 @@ void run_db_interact(MYSQL *con) {
 				}
 				case INTERACT_STATE_QUERY: {
 					xlog("  INTERACT_STATE_QUERY");
-					int key = getch();
-					switch (key) {
-						case KEY_x:
-							db_state = DB_STATE_END;
-							break;
-						case KEY_BTAB:
-						case KEY_TAB:
-							if (key == KEY_TAB)
-								interact_state = INTERACT_STATE_RESULTS;
-							else
-								interact_state = INTERACT_STATE_TABLE_LIST;
-							result_rerender = true;
-							break;
+					if (query_state == QUERY_STATE_COMMAND) {
+						xlog("   QUERY_STATE_COMMAND");
+						int key = getch();
+						switch (key) {
+							case KEY_x:
+								db_state = DB_STATE_END;
+								break;
+							case KEY_BTAB:
+							case KEY_TAB:
+								if (key == KEY_TAB)
+									interact_state = INTERACT_STATE_RESULTS;
+								else
+									interact_state = INTERACT_STATE_TABLE_LIST;
+								result_rerender = true;
+								break;
+							case KEY_i:
+							case KEY_e:
+								query_state = QUERY_STATE_EDIT;
+								break;
+						}
+					} else if(query_state == QUERY_STATE_EDIT) {
+						xlog("   QUERY_STATE_EDIT");
+						int key = getch();
+						switch (key) {
+							case KEY_ctrl_e:
+							case KEY_ESC:
+								query_state = QUERY_STATE_COMMAND;
+								break;
+							default:
+								// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
+								break;
+						}
 					}
 					break;
 				}
