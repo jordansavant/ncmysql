@@ -663,115 +663,123 @@ void run_db_interact(MYSQL *con) {
 					waddch(result_pad, ' ');
 				}
 
-				// print rows
-				MYSQL_ROW row;
-				mysql_data_seek(the_result, 0);
-				while ((row = mysql_fetch_row(the_result))) {
+				if (the_num_rows == 0) {
+					// print empty if no rows
 					wmove(result_pad, result_row++, 0);
+					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+					waddstr(result_pad, "no results");
+				} else {
+					// print rows
+					MYSQL_ROW row;
+					mysql_data_seek(the_result, 0);
+					while ((row = mysql_fetch_row(the_result))) {
+						wmove(result_pad, result_row++, 0);
 
-					int i=-1;
-					MYSQL_FIELD *f;
-					// TODO FIELD TITLES ON ROW TOP
-					mysql_field_seek(the_result, 0);
-					while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
+						int i=-1;
+						MYSQL_FIELD *f;
+						// TODO FIELD TITLES ON ROW TOP
+						mysql_field_seek(the_result, 0);
+						while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
-						unsigned long max_field_length = maxi(f->max_length, f->name_length); // size of biggest value in column
-						bool isnull = !row[i];
-						bool isempty = !isnull && strlen(row[i]) == 0;
-						// TODO max of field size and field name size
-						if (max_field_length > 32)
-							max_field_length = 32;
-						if (max_field_length < 1)
-							max_field_length = 1;
+							unsigned long max_field_length = maxi(f->max_length, f->name_length); // size of biggest value in column
+							bool isnull = !row[i];
+							bool isempty = !isnull && strlen(row[i]) == 0;
 
-						int imaxf;
-						if (isnull)
-							imaxf = maxi(max_field_length, 4); // "NULL"
-						else if (isempty)
-							imaxf = maxi(max_field_length, 5); // "EMPTY"
-						else
-							imaxf = (int)max_field_length; // plus 3 for padding
-						//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
-
-						// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
-						// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
-						// after a random null character because im not that concerned about rendering out contents of BLOBs with that
-						// shitty data in it
-						char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-						strclr(buffer, imaxf + 1);
-						if (isnull) {
-							// NULL
-							snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
-						} else if (isempty) {
-							// EMPTY STRING
-							snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
-						} else {
-							// CONTENTS
-							charreplace(row[i], '\t', ' ');
-							charreplace(row[i], '\n', ' ');
-							charreplace(row[i], '\r', ' ');
-							snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
-						}
-						// TODO color based on data type
-						if (isnull) {
-							wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
-						} else if (isempty) {
-							wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
-						} else {
-							switch (f->type) {
-								case MYSQL_TYPE_TINY:
-								case MYSQL_TYPE_SHORT:
-								case MYSQL_TYPE_LONG:
-								case MYSQL_TYPE_INT24:
-								case MYSQL_TYPE_LONGLONG:
-									wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
-									break;
-								case MYSQL_TYPE_DECIMAL:
-								case MYSQL_TYPE_NEWDECIMAL:
-								case MYSQL_TYPE_FLOAT:
-								case MYSQL_TYPE_DOUBLE:
-								case MYSQL_TYPE_BIT:
-									wattrset(result_pad, COLOR_PAIR(COLOR_MAGENTA_BLACK));
-									break;
-								case MYSQL_TYPE_DATETIME:
-								case MYSQL_TYPE_DATE:
-								case MYSQL_TYPE_TIME:
-									wattrset(result_pad, COLOR_PAIR(COLOR_BLUE_BLACK) | A_BOLD);
-									break;
-								default:
-									wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-									break;
+							// determine cell style
+							if (isnull) {
+								wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+							} else if (isempty) {
+								wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+							} else {
+								switch (f->type) {
+									case MYSQL_TYPE_TINY:
+									case MYSQL_TYPE_SHORT:
+									case MYSQL_TYPE_LONG:
+									case MYSQL_TYPE_INT24:
+									case MYSQL_TYPE_LONGLONG:
+										wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
+										break;
+									case MYSQL_TYPE_DECIMAL:
+									case MYSQL_TYPE_NEWDECIMAL:
+									case MYSQL_TYPE_FLOAT:
+									case MYSQL_TYPE_DOUBLE:
+									case MYSQL_TYPE_BIT:
+										wattrset(result_pad, COLOR_PAIR(COLOR_MAGENTA_BLACK));
+										break;
+									case MYSQL_TYPE_DATETIME:
+									case MYSQL_TYPE_DATE:
+									case MYSQL_TYPE_TIME:
+										wattrset(result_pad, COLOR_PAIR(COLOR_BLUE_BLACK) | A_BOLD);
+										break;
+									default:
+										wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+										break;
+								}
 							}
+
+							// print into the cell
+							if (max_field_length > 32)
+								max_field_length = 32;
+							if (max_field_length < 1)
+								max_field_length = 1;
+
+							int imaxf;
+							if (isnull)
+								imaxf = maxi(max_field_length, 4); // "NULL"
+							else if (isempty)
+								imaxf = maxi(max_field_length, 5); // "EMPTY"
+							else
+								imaxf = (int)max_field_length; // plus 3 for padding
+							//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
+
+							// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
+							// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
+							// after a random null character because im not that concerned about rendering out contents of BLOBs with that
+							// shitty data in it
+							char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+							strclr(buffer, imaxf + 1);
+							if (isnull) {
+								// NULL
+								snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
+							} else if (isempty) {
+								// EMPTY STRING
+								snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
+							} else {
+								// CONTENTS
+								charreplace(row[i], '\t', ' ');
+								charreplace(row[i], '\n', ' ');
+								charreplace(row[i], '\r', ' ');
+								snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
+							}
+							waddstr(result_pad, buffer);
+
+							// column divider
+							wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+							waddch(result_pad, ' ');
+							waddch(result_pad, ACS_CKBOARD);
+							waddch(result_pad, ' ');
+
+							//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+							//waddch(result_pad, ' ');
+							//wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
+							//waddch(result_pad, ' ');
+							//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+							//waddch(result_pad, ' ');
+
+							//for (unsigned long j = 0; j < max_field_length; j++) {
+							//	char character = row[i][j];
+							//	if (character > 31 && character < 127) {
+							//		// ASCII
+							//		waddch(result_pad, character);
+							//	} else {
+							//		// TODO detect UTF-8, new lines, null chars etc
+							//		waddch(result_pad, ACS_CKBOARD);
+							//	}
+							//}
+							//waddstr(result_pad, "    ");
 						}
-
-						waddstr(result_pad, buffer);
-
-						// column divider
-						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-						waddch(result_pad, ' ');
-						waddch(result_pad, ACS_CKBOARD);
-						waddch(result_pad, ' ');
-
-						//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-						//waddch(result_pad, ' ');
-						//wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
-						//waddch(result_pad, ' ');
-						//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-						//waddch(result_pad, ' ');
-
-						//for (unsigned long j = 0; j < max_field_length; j++) {
-						//	char character = row[i][j];
-						//	if (character > 31 && character < 127) {
-						//		// ASCII
-						//		waddch(result_pad, character);
-						//	} else {
-						//		// TODO detect UTF-8, new lines, null chars etc
-						//		waddch(result_pad, ACS_CKBOARD);
-						//	}
-						//}
-						//waddstr(result_pad, "    ");
-					}
-				}
+					} // eo while row
+				} // eo if rows
 			}
 
 			// print the string bar
