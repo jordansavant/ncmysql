@@ -66,6 +66,8 @@ MYSQL *selected_mysql_conn = NULL;
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0;
+bool result_rerender = true;
+int result_shift_r=0, result_shift_c=0;
 
 // STATE MACHINES
 //
@@ -519,6 +521,9 @@ void execute_query() {
 	if (!the_result) {
 		display_error(mysql_error(selected_mysql_conn));
 	}
+	result_rerender = true;
+	result_shift_r = 0;
+	result_shift_c = 0;
 }
 
 void clear_query() {
@@ -529,6 +534,9 @@ void clear_query() {
 		the_result = NULL;
 	}
 	strclr(the_query, QUERY_MAX);
+	result_rerender = true;
+	result_shift_r = 0;
+	result_shift_c = 0;
 }
 
 void run_db_interact(MYSQL *con) {
@@ -565,6 +573,8 @@ void run_db_interact(MYSQL *con) {
 			int max_table_name = col_size(tbl_result, 0);
 			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 			tbl_count = num_rows;
+
+			interact_state = INTERACT_STATE_TABLE_LIST;
 
 			if (tbl_count == 0)
 				db_state = DB_STATE_NOTABLES;
@@ -633,150 +643,154 @@ void run_db_interact(MYSQL *con) {
 
 			//////////////////////////////////////////////
 			// PRINT THE RESULTS PANEL
-			ui_clear_win(result_pad);
-			wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-			if (the_result) {
+			if (result_rerender) {
+				xlog("RERENDER");
+				result_rerender = false;
+				ui_clear_win(result_pad);
+				wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+				if (the_result) {
 
-				int result_row = 0;
+					int result_row = 0;
 
-				// print header
-				wmove(result_pad, result_row++, 0);
-				MYSQL_FIELD *fh;
-				mysql_field_seek(the_result, 0);
-				while (fh = mysql_fetch_field(the_result)) {
-					unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
-					if (max_field_length > 32)
-						max_field_length = 32;
-					int imaxf = (int)max_field_length;
-					char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-					strclr(buffer, imaxf + 1);
-					snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
-					int attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
-					if (interact_state == INTERACT_STATE_RESULTS)
-						attrs |= A_BOLD;
-					wattrset(result_pad, attrs);
-					waddstr(result_pad, buffer);
-
-					// column divider
-					wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-					waddch(result_pad, ' ');
-					waddch(result_pad, ACS_CKBOARD);
-					waddch(result_pad, ' ');
-				}
-
-				if (the_num_rows == 0) {
-					// print empty if no rows
+					// print header
 					wmove(result_pad, result_row++, 0);
-					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
-					waddstr(result_pad, "no results");
-				} else {
-					// print rows
-					MYSQL_ROW row;
-					mysql_data_seek(the_result, 0);
-					while ((row = mysql_fetch_row(the_result))) {
+					MYSQL_FIELD *fh;
+					mysql_field_seek(the_result, 0);
+					while (fh = mysql_fetch_field(the_result)) {
+						unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
+						if (max_field_length > 32)
+							max_field_length = 32;
+						int imaxf = (int)max_field_length;
+						char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+						strclr(buffer, imaxf + 1);
+						snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
+						int attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
+						if (interact_state == INTERACT_STATE_RESULTS)
+							attrs |= A_BOLD;
+						wattrset(result_pad, attrs);
+						waddstr(result_pad, buffer);
+
+						// column divider
+						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+						waddch(result_pad, ' ');
+						waddch(result_pad, ACS_CKBOARD);
+						waddch(result_pad, ' ');
+					}
+
+					if (the_num_rows == 0) {
+						// print empty if no rows
 						wmove(result_pad, result_row++, 0);
+						wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+						waddstr(result_pad, "no results");
+					} else {
+						// print rows
+						MYSQL_ROW row;
+						mysql_data_seek(the_result, 0);
+						while ((row = mysql_fetch_row(the_result))) {
+							wmove(result_pad, result_row++, 0);
 
-						int i=-1;
-						MYSQL_FIELD *f;
-						// TODO FIELD TITLES ON ROW TOP
-						mysql_field_seek(the_result, 0);
-						while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
+							int i=-1;
+							MYSQL_FIELD *f;
+							// TODO FIELD TITLES ON ROW TOP
+							mysql_field_seek(the_result, 0);
+							while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
-							unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
-							bool isnull = !row[i];
-							bool isempty = !isnull && strlen(row[i]) == 0;
+								unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
+								bool isnull = !row[i];
+								bool isempty = !isnull && strlen(row[i]) == 0;
 
-							// determine cell style
-							int attrs;
-							if (isnull) {
-								attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
-							} else if (isempty) {
-								attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
-							} else {
-								switch (f->type) {
-									case MYSQL_TYPE_TINY:
-									case MYSQL_TYPE_SHORT:
-									case MYSQL_TYPE_LONG:
-									case MYSQL_TYPE_INT24:
-									case MYSQL_TYPE_LONGLONG:
-										attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
-										break;
-									case MYSQL_TYPE_DECIMAL:
-									case MYSQL_TYPE_NEWDECIMAL:
-									case MYSQL_TYPE_FLOAT:
-									case MYSQL_TYPE_DOUBLE:
-									case MYSQL_TYPE_BIT:
-										attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
-										break;
-									case MYSQL_TYPE_DATETIME:
-									case MYSQL_TYPE_DATE:
-									case MYSQL_TYPE_TIME:
-										attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
-										break;
-									default:
-										attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
-										break;
+								// determine cell style
+								int attrs;
+								if (isnull) {
+									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
+								} else if (isempty) {
+									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
+								} else {
+									switch (f->type) {
+										case MYSQL_TYPE_TINY:
+										case MYSQL_TYPE_SHORT:
+										case MYSQL_TYPE_LONG:
+										case MYSQL_TYPE_INT24:
+										case MYSQL_TYPE_LONGLONG:
+											attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
+											break;
+										case MYSQL_TYPE_DECIMAL:
+										case MYSQL_TYPE_NEWDECIMAL:
+										case MYSQL_TYPE_FLOAT:
+										case MYSQL_TYPE_DOUBLE:
+										case MYSQL_TYPE_BIT:
+											attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
+											break;
+										case MYSQL_TYPE_DATETIME:
+										case MYSQL_TYPE_DATE:
+										case MYSQL_TYPE_TIME:
+											attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
+											break;
+										default:
+											attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
+											break;
+									}
 								}
+								if (interact_state == INTERACT_STATE_RESULTS)
+									attrs |= A_BOLD;
+								wattrset(result_pad, attrs);
+
+								// print into the cell
+								if (max_field_length > 32)
+									max_field_length = 32;
+
+								int imaxf;
+								if (isnull)
+									imaxf = maxi(max_field_length, 4); // "NULL"
+								else if (isempty)
+									imaxf = maxi(max_field_length, 5); // "EMPTY"
+								else
+									imaxf = (int)max_field_length; // plus 3 for padding
+								//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
+
+								// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
+								// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
+								// after a random null character because im not that concerned about rendering out contents of BLOBs with that
+								// shitty data in it
+								char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+								strclr(buffer, imaxf + 1);
+								if (isnull) {
+									// NULL
+									snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
+								} else if (isempty) {
+									// EMPTY STRING
+									snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
+								} else {
+									// CONTENTS
+									charreplace(row[i], '\t', ' ');
+									charreplace(row[i], '\n', ' ');
+									charreplace(row[i], '\r', ' ');
+									snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
+								}
+								waddstr(result_pad, buffer);
+
+								// column divider
+								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+								waddch(result_pad, ' ');
+								waddch(result_pad, ACS_CKBOARD);
+								waddch(result_pad, ' ');
+
+								//for (unsigned long j = 0; j < max_field_length; j++) {
+								//	char character = row[i][j];
+								//	if (character > 31 && character < 127) {
+								//		// ASCII
+								//		waddch(result_pad, character);
+								//	} else {
+								//		// TODO detect UTF-8, new lines, null chars etc
+								//		waddch(result_pad, ACS_CKBOARD);
+								//	}
+								//}
+								//waddstr(result_pad, "    ");
 							}
-							if (interact_state == INTERACT_STATE_RESULTS)
-								attrs |= A_BOLD;
-							wattrset(result_pad, attrs);
-
-							// print into the cell
-							if (max_field_length > 32)
-								max_field_length = 32;
-
-							int imaxf;
-							if (isnull)
-								imaxf = maxi(max_field_length, 4); // "NULL"
-							else if (isempty)
-								imaxf = maxi(max_field_length, 5); // "EMPTY"
-							else
-								imaxf = (int)max_field_length; // plus 3 for padding
-							//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
-
-							// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
-							// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
-							// after a random null character because im not that concerned about rendering out contents of BLOBs with that
-							// shitty data in it
-							char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-							strclr(buffer, imaxf + 1);
-							if (isnull) {
-								// NULL
-								snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
-							} else if (isempty) {
-								// EMPTY STRING
-								snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
-							} else {
-								// CONTENTS
-								charreplace(row[i], '\t', ' ');
-								charreplace(row[i], '\n', ' ');
-								charreplace(row[i], '\r', ' ');
-								snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
-							}
-							waddstr(result_pad, buffer);
-
-							// column divider
-							wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-							waddch(result_pad, ' ');
-							waddch(result_pad, ACS_CKBOARD);
-							waddch(result_pad, ' ');
-
-							//for (unsigned long j = 0; j < max_field_length; j++) {
-							//	char character = row[i][j];
-							//	if (character > 31 && character < 127) {
-							//		// ASCII
-							//		waddch(result_pad, character);
-							//	} else {
-							//		// TODO detect UTF-8, new lines, null chars etc
-							//		waddch(result_pad, ACS_CKBOARD);
-							//	}
-							//}
-							//waddstr(result_pad, "    ");
-						}
-					} // eo while row
-				} // eo if rows
-			}
+						} // eo while row
+					} // eo if rows
+				} // eo if results
+			} // eo if rerender
 
 
 			//////////////////////////////////////////////
@@ -812,9 +826,12 @@ void run_db_interact(MYSQL *con) {
 			int sx, sy;
 			getmaxyx(stdscr, sy, sx);
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
+
+			int rp_shift_r = result_shift_r;
+			int rp_shift_c = result_shift_c;
 			int rp_y = QUERY_WIN_H + 1;
 			int rp_x = tbl_render_w + 1 + 2;
-			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
+			prefresh(result_pad, rp_shift_r,rp_shift_c, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
 
 
 			////////////////////////////////////////////
@@ -841,6 +858,7 @@ void run_db_interact(MYSQL *con) {
 							break;
 						case KEY_TAB:
 							interact_state = INTERACT_STATE_QUERY;
+							result_rerender = true;
 							break;
 						case KEY_d:
 							mysql_data_seek(tbl_result, tbl_index);
@@ -877,6 +895,7 @@ void run_db_interact(MYSQL *con) {
 							break;
 						case KEY_TAB:
 							interact_state = INTERACT_STATE_RESULTS;
+							result_rerender = true;
 							break;
 					}
 					break;
@@ -890,6 +909,35 @@ void run_db_interact(MYSQL *con) {
 							break;
 						case KEY_TAB:
 							interact_state = INTERACT_STATE_TABLE_LIST;
+							result_rerender = true;
+							break;
+						case KEY_UP:
+							result_shift_r--;
+							result_shift_r = maxi(0, result_shift_r);
+							break;
+						case KEY_DOWN:
+							result_shift_r++;
+							break;
+						case KEY_LEFT:
+							result_shift_c -= 2;
+							result_shift_c = maxi(0, result_shift_c);
+							break;
+						case KEY_RIGHT:
+							result_shift_c += 2;
+							break;
+						case KEY_PPAGE: // pageup
+							result_shift_r -= 20;
+							result_shift_r = maxi(0, result_shift_r);
+							break;
+						case KEY_NPAGE:
+							result_shift_r += 20;
+							break;
+						case KEY_HOME:
+							result_shift_c -= 40;
+							result_shift_c = maxi(0, result_shift_c);
+							break;
+						case KEY_END:
+							result_shift_c += 40;
 							break;
 					}
 					break;
