@@ -633,29 +633,49 @@ void run_db_interact(MYSQL *con) {
 
 			//////////////////////////////////////////////
 			// PRINT THE RESULTS PANEL
-			xlog("  - print results start");
 			ui_clear_win(result_pad);
 			wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 			if (the_result) {
-				// print rows
+
 				int result_row = 0;
+
+				// print header
+				wmove(result_pad, result_row++, 0);
+				MYSQL_FIELD *fh;
+				mysql_field_seek(the_result, 0);
+				while (fh = mysql_fetch_field(the_result)) {
+					unsigned long max_field_length = maxi(fh->max_length, fh->name_length); // size of biggest value in column
+					if (max_field_length > 32)
+						max_field_length = 32;
+					if (max_field_length < 1)
+						max_field_length = 1;
+					int imaxf = (int)max_field_length;
+					char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+					strclr(buffer, imaxf + 1);
+					snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
+					wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE);
+					waddstr(result_pad, buffer);
+
+					// column divider
+					wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+					waddch(result_pad, ' ');
+					waddch(result_pad, ACS_CKBOARD);
+					waddch(result_pad, ' ');
+				}
+
+				// print rows
 				MYSQL_ROW row;
 				mysql_data_seek(the_result, 0);
-				int h=-1;
 				while ((row = mysql_fetch_row(the_result))) {
-					h++;
-					xlogf("row=%d\n", h);
 					wmove(result_pad, result_row++, 0);
 
 					int i=-1;
 					MYSQL_FIELD *f;
 					// TODO FIELD TITLES ON ROW TOP
 					mysql_field_seek(the_result, 0);
-					while (f = mysql_fetch_field(the_result)) {
-						i++;
+					while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
-						xlogf("%d %d field: %s %lu %lu\n", i, the_num_fields, f->name, f->length, f->max_length);
-						unsigned long max_field_length = f->max_length; // size of biggest value in column
+						unsigned long max_field_length = maxi(f->max_length, f->name_length); // size of biggest value in column
 						bool isnull = !row[i];
 						bool isempty = !isnull && strlen(row[i]) == 0;
 						// TODO max of field size and field name size
@@ -666,12 +686,12 @@ void run_db_interact(MYSQL *con) {
 
 						int imaxf;
 						if (isnull)
-							imaxf = maxi(max_field_length + 3, 4);
+							imaxf = maxi(max_field_length, 4); // "NULL"
 						else if (isempty)
-							imaxf = maxi(max_field_length + 3, 5);
+							imaxf = maxi(max_field_length, 5); // "EMPTY"
 						else
-							imaxf = (int)max_field_length + 3; // plus 3 for padding
-						xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
+							imaxf = (int)max_field_length; // plus 3 for padding
+						//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
 
 						// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
 						// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
@@ -681,21 +701,17 @@ void run_db_interact(MYSQL *con) {
 						strclr(buffer, imaxf + 1);
 						if (isnull) {
 							// NULL
-							xlogf("%s:%d\n", __FILE__, __LINE__);
 							snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
 						} else if (isempty) {
 							// EMPTY STRING
-							xlogf("%s:%d\n", __FILE__, __LINE__);
 							snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
 						} else {
 							// CONTENTS
-							xlogf("%s:%d\n", __FILE__, __LINE__);
 							charreplace(row[i], '\t', ' ');
 							charreplace(row[i], '\n', ' ');
 							charreplace(row[i], '\r', ' ');
 							snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
 						}
-						xlogf("%s:%d\n", __FILE__, __LINE__);
 						// TODO color based on data type
 						if (isnull) {
 							wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
@@ -728,19 +744,6 @@ void run_db_interact(MYSQL *con) {
 							}
 						}
 
-						if (isnull) {
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-							//waddstr(result_pad, "N");
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-						} else if (isempty) {
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-							//waddstr(result_pad, "E");
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-						} else {
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-							//waddstr(result_pad, buffer);
-							xlogf("%s:%d\n", __FILE__, __LINE__);
-						}
 						waddstr(result_pad, buffer);
 
 						// column divider
@@ -770,7 +773,6 @@ void run_db_interact(MYSQL *con) {
 					}
 				}
 			}
-			xlog("  - print results end");
 
 			// print the string bar
 			// print the command bar
