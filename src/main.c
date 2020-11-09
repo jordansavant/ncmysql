@@ -876,7 +876,11 @@ void run_db_interact(MYSQL *con) {
 							db_state = DB_STATE_END;
 							break;
 						case KEY_TAB:
-							interact_state = INTERACT_STATE_QUERY;
+						case KEY_BTAB:
+							if (key == KEY_TAB)
+								interact_state = INTERACT_STATE_QUERY;
+							else
+								interact_state = INTERACT_STATE_RESULTS;
 							result_rerender = true;
 							break;
 						case KEY_d:
@@ -912,8 +916,12 @@ void run_db_interact(MYSQL *con) {
 						case KEY_x:
 							db_state = DB_STATE_END;
 							break;
+						case KEY_BTAB:
 						case KEY_TAB:
-							interact_state = INTERACT_STATE_RESULTS;
+							if (key == KEY_TAB)
+								interact_state = INTERACT_STATE_RESULTS;
+							else
+								interact_state = INTERACT_STATE_TABLE_LIST;
 							result_rerender = true;
 							break;
 					}
@@ -926,8 +934,12 @@ void run_db_interact(MYSQL *con) {
 						case KEY_x:
 							db_state = DB_STATE_END;
 							break;
+						case KEY_BTAB:
 						case KEY_TAB:
-							interact_state = INTERACT_STATE_TABLE_LIST;
+							if (key == KEY_TAB)
+								interact_state = INTERACT_STATE_TABLE_LIST;
+							else
+								interact_state = INTERACT_STATE_QUERY;
 							result_rerender = true;
 							break;
 						case KEY_UP:
