@@ -644,11 +644,9 @@ void run_db_interact(MYSQL *con) {
 				MYSQL_FIELD *fh;
 				mysql_field_seek(the_result, 0);
 				while (fh = mysql_fetch_field(the_result)) {
-					unsigned long max_field_length = maxi(fh->max_length, fh->name_length); // size of biggest value in column
+					unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
 					if (max_field_length > 32)
 						max_field_length = 32;
-					if (max_field_length < 1)
-						max_field_length = 1;
 					int imaxf = (int)max_field_length;
 					char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
 					strclr(buffer, imaxf + 1);
@@ -681,7 +679,7 @@ void run_db_interact(MYSQL *con) {
 						mysql_field_seek(the_result, 0);
 						while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
-							unsigned long max_field_length = maxi(f->max_length, f->name_length); // size of biggest value in column
+							unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
 							bool isnull = !row[i];
 							bool isempty = !isnull && strlen(row[i]) == 0;
 
@@ -720,8 +718,6 @@ void run_db_interact(MYSQL *con) {
 							// print into the cell
 							if (max_field_length > 32)
 								max_field_length = 32;
-							if (max_field_length < 1)
-								max_field_length = 1;
 
 							int imaxf;
 							if (isnull)
@@ -840,12 +836,13 @@ void run_db_interact(MYSQL *con) {
 							interact_state = INTERACT_STATE_QUERY;
 							break;
 						case KEY_d:
-							set_query("SELECT * FROM wp_posts LIMIT 100");
+							mysql_data_seek(tbl_result, tbl_index);
+							MYSQL_ROW r = mysql_fetch_row(tbl_result);
+							set_queryf("DESCRIBE %s", r[0]);
 							execute_query();
 							break;
+						case KEY_s:
 						case KEY_RETURN: {
-							// TODO get the current table and inject that into the query
-							// get the current table
 							mysql_data_seek(tbl_result, tbl_index);
 							MYSQL_ROW r = mysql_fetch_row(tbl_result);
 							set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
