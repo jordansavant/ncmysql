@@ -14,6 +14,7 @@
 #define KEY_TAB		9
 
 #define KEY_ctrl_e	5
+#define KEY_ctrl_x	24
 
 #define KEY_a		97
 #define KEY_b		98
@@ -143,6 +144,13 @@ int maxi(int a, int b) {
 	if (a > b)
 		return a;
 	return b;
+}
+int clampi(int v, int min, int max) {
+	if (v > max)
+		return max;
+	else if (v < min)
+		return min;
+	return v;
 }
 
 
@@ -547,6 +555,8 @@ void clear_query() {
 	result_shift_c = 0;
 }
 
+
+int cury=-1, curx=-1;
 void run_db_interact(MYSQL *con) {
 
 	int sx, sy;
@@ -642,10 +652,11 @@ void run_db_interact(MYSQL *con) {
 			//////////////////////////////////////////////
 			// PRINT THE QUERY PANEL
 			ui_clear_win(query_window);
-			if (interact_state == INTERACT_STATE_QUERY)
+			if (interact_state == INTERACT_STATE_QUERY) {
 				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-			else
+			} else {
 				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK));
+			}
 			wmove(query_window, 0, 0);
 			waddstr(query_window, the_query);
 			wrefresh(query_window);
@@ -680,9 +691,11 @@ void run_db_interact(MYSQL *con) {
 						waddstr(result_pad, buffer);
 
 						// column divider
-						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 						waddch(result_pad, ' ');
-						waddch(result_pad, ACS_CKBOARD);
+						wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
+						waddch(result_pad, ACS_VLINE);
+						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 						waddch(result_pad, ' ');
 					}
 
@@ -740,8 +753,8 @@ void run_db_interact(MYSQL *con) {
 											break;
 									}
 								}
-								if (interact_state == INTERACT_STATE_RESULTS)
-									attrs |= A_BOLD;
+								//if (interact_state == INTERACT_STATE_RESULTS)
+								//	attrs |= A_BOLD;
 								wattrset(result_pad, attrs);
 
 								// print into the cell
@@ -779,9 +792,11 @@ void run_db_interact(MYSQL *con) {
 								waddstr(result_pad, buffer);
 
 								// column divider
-								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
-								waddch(result_pad, ACS_CKBOARD);
+								wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
+								waddch(result_pad, ACS_VLINE);
+								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
 
 								//for (unsigned long j = 0; j < max_field_length; j++) {
@@ -814,21 +829,21 @@ void run_db_interact(MYSQL *con) {
 					display_str(r[0]);
 
 					// command bar
-					display_cmd("TABLE MODE", "s/ent:select-100 | d:describe | tab:next | x:close");
+					display_cmd("TABLES", "s/ent:select-100 | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
 					// string bar (none)
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
-						display_cmd("QUERY MODE", "e/i:edit | tab:next | x:close");
+						display_cmd("QUERY", "e/i:edit | tab:next | x:close");
 					else
-						display_cmd("EDIT QUERY", "esc:exit | tab:next | x:close");
+						display_cmd("EDIT QUERY", "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
 				case INTERACT_STATE_RESULTS:
 					// string bar (none)
 					// command bar
-					display_cmd("RESULT MODE", "tab:next | x:close");
+					display_cmd("RESULTS", "tab:next | x:close");
 					break;
 			}
 
@@ -928,6 +943,7 @@ void run_db_interact(MYSQL *con) {
 					xlog("  INTERACT_STATE_QUERY");
 					if (query_state == QUERY_STATE_COMMAND) {
 						xlog("   QUERY_STATE_COMMAND");
+						curs_set(0);
 						int key = getch();
 						switch (key) {
 							case KEY_x:
@@ -948,15 +964,48 @@ void run_db_interact(MYSQL *con) {
 						}
 					} else if(query_state == QUERY_STATE_EDIT) {
 						xlog("   QUERY_STATE_EDIT");
-						int key = getch();
-						switch (key) {
-							case KEY_ctrl_e:
-							case KEY_ESC:
-								query_state = QUERY_STATE_COMMAND;
-								break;
-							default:
-								// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
-								break;
+						curs_set(1);
+
+						int miny,minx, maxy,maxx;
+						getbegyx(query_window, miny, minx);
+						getmaxyx(query_window, maxy, maxx);
+						maxy = miny + maxy - 1; maxx = minx + maxx; // add beginning coordinates to max sizes
+						if (cury < miny || curx < minx || cury > maxy || curx > maxx)
+							cury=miny, curx=minx; // default to beggining
+						move(cury, curx);
+
+						bool editing = true;
+						while (editing) {
+							// Lock down editing to this position
+							int key = getch();
+							switch (key) {
+								case KEY_ctrl_x:
+								case KEY_ESC:
+									query_state = QUERY_STATE_COMMAND;
+									editing = false;
+									break;
+								// MOVE CURSOR
+								case KEY_LEFT:
+									curx = clampi(curx - 1, minx, maxx);
+									move(cury, curx);
+									break;
+								case KEY_RIGHT:
+									curx = clampi(curx + 1, minx, maxx);
+									move(cury, curx);
+									break;
+								case KEY_UP:
+									cury = clampi(cury - 1, miny, maxy);
+									move(cury, curx);
+									break;
+								case KEY_DOWN:
+									cury = clampi(cury + 1, miny, maxy);
+									move(cury, curx);
+									break;
+								// TEXT EDITOR
+								default:
+									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
+									break;
+							}
 						}
 					}
 					break;
