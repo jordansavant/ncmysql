@@ -32,6 +32,21 @@ WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)
 	return newwin(rows, cols, offset_row, indent);
 }
 
+void ui_clear_win(WINDOW *win)
+{
+	for (int i=0; i<getmaxy(win); i++) {
+		wmove(win, i,0);
+		wclrtoeol(win);
+	}
+	wrefresh(win);
+}
+
+void ui_clear_row(WINDOW *win, int row)
+{
+	wmove(win, row + 1, 0);
+	wclrtoeol(win);
+}
+
 void ui_box_color(WINDOW* win, int colorpair)
 {
 	box(win, ACS_VLINE, ACS_HLINE);

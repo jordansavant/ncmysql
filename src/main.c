@@ -503,6 +503,15 @@ void set_query(char *query) {
 	strcpy(the_query, query);
 }
 
+void set_queryf(char *format, ...) {
+	strclr(the_query, QUERY_MAX);
+
+	va_list argptr;
+	va_start(argptr, format);
+	vsprintf(the_query, format, argptr);
+	va_end(argptr);
+}
+
 void execute_query() {
 	int errcode;
 	xlog(the_query);
@@ -613,7 +622,7 @@ void run_db_interact(MYSQL *con) {
 
 			//////////////////////////////////////////////
 			// PRINT THE QUERY PANEL
-			// TODO clear the window
+			ui_clear_win(query_window);
 			if (interact_state == INTERACT_STATE_QUERY)
 				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
 			else
@@ -624,7 +633,7 @@ void run_db_interact(MYSQL *con) {
 
 			//////////////////////////////////////////////
 			// PRINT THE RESULTS PANEL
-			// TODO clear the window
+			ui_clear_win(result_pad);
 			wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 			if (the_result) {
 				// get field data
@@ -689,7 +698,7 @@ void run_db_interact(MYSQL *con) {
 						}
 						waddstr(result_pad, buffer);
 
-						// divider
+						// column divider
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
 						waddch(result_pad, ' ');
 						waddch(result_pad, ACS_CKBOARD);
@@ -778,11 +787,15 @@ void run_db_interact(MYSQL *con) {
 							set_query("SELECT * FROM wp_posts LIMIT 100");
 							execute_query();
 							break;
-						case KEY_RETURN:
+						case KEY_RETURN: {
 							// TODO get the current table and inject that into the query
-							set_query("SELECT * FROM wp_posts LIMIT 100");
+							// get the current table
+							mysql_data_seek(tbl_result, tbl_index);
+							MYSQL_ROW r = mysql_fetch_row(tbl_result);
+							set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
 							execute_query();
 							break;
+						}
 						case KEY_UP:
 						case KEY_DOWN:
 							if (key == KEY_UP)
