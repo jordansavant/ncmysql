@@ -651,7 +651,10 @@ void run_db_interact(MYSQL *con) {
 					char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
 					strclr(buffer, imaxf + 1);
 					snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
-					wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE);
+					int attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
+					if (interact_state == INTERACT_STATE_RESULTS)
+						attrs |= A_BOLD;
+					wattrset(result_pad, attrs);
 					waddstr(result_pad, buffer);
 
 					// column divider
@@ -684,10 +687,11 @@ void run_db_interact(MYSQL *con) {
 							bool isempty = !isnull && strlen(row[i]) == 0;
 
 							// determine cell style
+							int attrs;
 							if (isnull) {
-								wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+								attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
 							} else if (isempty) {
-								wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+								attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
 							} else {
 								switch (f->type) {
 									case MYSQL_TYPE_TINY:
@@ -695,25 +699,28 @@ void run_db_interact(MYSQL *con) {
 									case MYSQL_TYPE_LONG:
 									case MYSQL_TYPE_INT24:
 									case MYSQL_TYPE_LONGLONG:
-										wattrset(result_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
+										attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
 										break;
 									case MYSQL_TYPE_DECIMAL:
 									case MYSQL_TYPE_NEWDECIMAL:
 									case MYSQL_TYPE_FLOAT:
 									case MYSQL_TYPE_DOUBLE:
 									case MYSQL_TYPE_BIT:
-										wattrset(result_pad, COLOR_PAIR(COLOR_MAGENTA_BLACK));
+										attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
 										break;
 									case MYSQL_TYPE_DATETIME:
 									case MYSQL_TYPE_DATE:
 									case MYSQL_TYPE_TIME:
-										wattrset(result_pad, COLOR_PAIR(COLOR_BLUE_BLACK) | A_BOLD);
+										attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
 										break;
 									default:
-										wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+										attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
 										break;
 								}
 							}
+							if (interact_state == INTERACT_STATE_RESULTS)
+								attrs |= A_BOLD;
+							wattrset(result_pad, attrs);
 
 							// print into the cell
 							if (max_field_length > 32)
@@ -755,13 +762,6 @@ void run_db_interact(MYSQL *con) {
 							waddch(result_pad, ACS_CKBOARD);
 							waddch(result_pad, ' ');
 
-							//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-							//waddch(result_pad, ' ');
-							//wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
-							//waddch(result_pad, ' ');
-							//wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-							//waddch(result_pad, ' ');
-
 							//for (unsigned long j = 0; j < max_field_length; j++) {
 							//	char character = row[i][j];
 							//	if (character > 31 && character < 127) {
@@ -778,8 +778,10 @@ void run_db_interact(MYSQL *con) {
 				} // eo if rows
 			}
 
-			// print the string bar
-			// print the command bar
+
+			//////////////////////////////////////////////
+			// PRINT THE STRING BAR
+			// PRINT THE COMMAND BAR
 			switch (interact_state) {
 				case INTERACT_STATE_TABLE_LIST: {
 					// string bar
@@ -789,26 +791,31 @@ void run_db_interact(MYSQL *con) {
 					display_str(r[0]);
 
 					// command bar
-					display_cmd("TABLE MODE", "x:close | s/ent:select-1000 | d:describe");
+					display_cmd("TABLE MODE", "s/ent:select-100 | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
 					// string bar (none)
-
 					// command bar
-					display_cmd("QUERY MODE", "tab: next | x: close | i: insert");
+					display_cmd("QUERY MODE", "i:insert | tab:next | x:close");
+					break;
+				case INTERACT_STATE_RESULTS:
+					// string bar (none)
+					// command bar
+					display_cmd("RESULT MODE", "tab:next | x:close");
 					break;
 			}
 
 
-			int sx, sy;
-			getmaxyx(stdscr, sy, sx);
 			// pads need to be refreshed after windows
 			// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:x-inscreen,w-onscreen)
+			int sx, sy;
+			getmaxyx(stdscr, sy, sx);
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
 			int rp_y = QUERY_WIN_H + 1;
 			int rp_x = tbl_render_w + 1 + 2;
 			prefresh(result_pad, 0,0, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
+
 
 			////////////////////////////////////////////
 			// GUTTERS / DIVIDERS
@@ -863,6 +870,19 @@ void run_db_interact(MYSQL *con) {
 				}
 				case INTERACT_STATE_QUERY: {
 					xlog("  INTERACT_STATE_QUERY");
+					int key = getch();
+					switch (key) {
+						case KEY_x:
+							db_state = DB_STATE_END;
+							break;
+						case KEY_TAB:
+							interact_state = INTERACT_STATE_RESULTS;
+							break;
+					}
+					break;
+				}
+				case INTERACT_STATE_RESULTS: {
+					xlog("  INTERACT_STATE_RESULTS");
 					int key = getch();
 					switch (key) {
 						case KEY_x:
