@@ -294,7 +294,7 @@ void app_setup() {
 	// newwin(numrows, numcols, beginy, beginx);
 	str_window = newwin(1, sx, sy - 2, 0);
 	cmd_window = newwin(1, sx, sy - 1, 0);
-	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1 -2,  0, TBL_LIST_W + 1 + 2); // plus2 for gutter
+	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1 - 2 - 1,  0, TBL_LIST_W + 1 + 2 + 1); // plus 2 for gutter
 	//query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 3, 0, TBL_LIST_W + 2);
 	//result_pad = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
 	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
@@ -611,7 +611,7 @@ void run_db_interact(MYSQL *con) {
 					if (interact_state == INTERACT_STATE_TABLE_LIST)
 						wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
 					else
-						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLACK));
+						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
 				} else {
 					wattrset(tbl_pad, COLOR_PAIR(0));
 				}
@@ -830,7 +830,7 @@ void run_db_interact(MYSQL *con) {
 			int rp_shift_r = result_shift_r;
 			int rp_shift_c = result_shift_c;
 			int rp_y = QUERY_WIN_H + 1;
-			int rp_x = tbl_render_w + 1 + 2;
+			int rp_x = tbl_render_w + 1 + 2 + 1;
 			prefresh(result_pad, rp_shift_r,rp_shift_c, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
 
 
@@ -843,6 +843,25 @@ void run_db_interact(MYSQL *con) {
 			// horiz
 			move(QUERY_WIN_H,tbl_render_w + 1 + 1);
 			hline(' ',256);
+			// focus lines
+			if (interact_state == INTERACT_STATE_QUERY) {
+				attrset(COLOR_PAIR(COLOR_BLACK_CYAN));
+				move(0, tbl_render_w + 2);
+				vline(' ', QUERY_WIN_H);
+			} else {
+				attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
+				move(0, tbl_render_w + 2);
+				vline(' ', QUERY_WIN_H);
+			}
+			if (interact_state == INTERACT_STATE_RESULTS) {
+				attrset(COLOR_PAIR(COLOR_BLACK_CYAN));
+				move(QUERY_WIN_H + 1, tbl_render_w + 2);
+				vline(' ', sy - QUERY_WIN_H - 3);
+			} else {
+				attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
+				move(QUERY_WIN_H + 1, tbl_render_w + 2);
+				vline(' ', sy - QUERY_WIN_H - 3);
+			}
 
 			// depending on which context I am in:
 			// - table list, query, results, interact differently
