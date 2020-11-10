@@ -32,6 +32,15 @@ WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)
 	return newwin(rows, cols, offset_row, indent);
 }
 
+void ui_center_win(WINDOW* win, int offset_row, int offset_col, int rows, int cols)
+{
+	int y, x, indent;
+	getmaxyx(stdscr, y, x);
+	indent = (x - cols) / 2 + offset_col;
+	wresize(win, rows, cols);
+	mvwin(win, offset_row, indent);
+}
+
 void ui_clear_win(WINDOW *win)
 {
 	for (int i=0; i<getmaxy(win); i++) {

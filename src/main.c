@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
 #include "sqlops.h"
 #include "ui.h"
 
@@ -295,6 +296,30 @@ void ncurses_teardown() {
 	endwin();
 }
 
+void app_ui_layout() {
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+
+	ui_center_win(error_window, 16,0, ERR_WIN_H,ERR_WIN_W);
+	wresize(str_window, 1, sx);
+	mvwin(str_window, sy - 2, 0);
+	wresize(cmd_window, 1, sx);
+	mvwin(cmd_window, sy - 1, 0);
+	wresize(query_window, QUERY_WIN_H, sx - TBL_LIST_W - 1 - 2 - 1);
+	mvwin(query_window, 0, TBL_LIST_W + 1 + 2 + 1); // plus 2 for gutter + 1 for spacing
+}
+
+bool term_resized = false;
+void on_term_resize(int dummy) {
+	term_resized = true;
+
+	clear();
+	endwin();
+	refresh();
+	app_ui_layout();
+	refresh();
+}
+
 void app_setup() {
 	if (!ncurses_setup())
 		exit(1);
@@ -305,17 +330,17 @@ void app_setup() {
 	getmaxyx(stdscr, sy, sx);
 
 	// TODO deal with window resize
-	//error_window = newwim(0, 0, 0, 0);
-	error_window = ui_new_center_win(16, 0, ERR_WIN_H, ERR_WIN_W);
-	// newwin(numrows, numcols, beginy, beginx);
-	str_window = newwin(1, sx, sy - 2, 0);
-	cmd_window = newwin(1, sx, sy - 1, 0);
-	query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 1 - 2 - 1,  0, TBL_LIST_W + 1 + 2 + 1); // plus 2 for gutter
-	//query_window = newwin(QUERY_WIN_H, sx - TBL_LIST_W - 3, 0, TBL_LIST_W + 2);
-	//result_pad = newwin(sy - QUERY_WIN_H, sx - TBL_LIST_W - 1, QUERY_WIN_H, TBL_LIST_W + 1);
+	error_window = newwin(0,0,0,0);
+	str_window = newwin(0,0,0,0);
+	cmd_window = newwin(0,0,0,0);
+	query_window = newwin(0,0,0,0);
 	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
+	app_ui_layout();
 
 	strclr(the_query, QUERY_MAX);
+
+	// listen to os signal
+	signal(SIGWINCH, on_term_resize);
 }
 
 void app_teardown() {
@@ -556,7 +581,6 @@ void clear_query() {
 }
 
 
-int cury=-1, curx=-1;
 void run_db_interact(MYSQL *con) {
 
 	int sx, sy;
@@ -694,7 +718,7 @@ void run_db_interact(MYSQL *con) {
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 						waddch(result_pad, ' ');
 						wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-						waddch(result_pad, ACS_VLINE);
+						waddch(result_pad, ' ');
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 						waddch(result_pad, ' ');
 					}
@@ -795,7 +819,7 @@ void run_db_interact(MYSQL *con) {
 								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
 								wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-								waddch(result_pad, ACS_VLINE);
+								waddch(result_pad, ' ');
 								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
 
@@ -970,9 +994,15 @@ void run_db_interact(MYSQL *con) {
 						getbegyx(query_window, miny, minx);
 						getmaxyx(query_window, maxy, maxx);
 						maxy = miny + maxy - 1; maxx = minx + maxx; // add beginning coordinates to max sizes
+
+						int cury,curx;
+						getyx(query_window, cury,curx);
+						cury += miny; curx += minx;
+						xlogf("cury=%d curx=%d miny=%d minx=%d\n", cury, curx, miny, minx);
 						if (cury < miny || curx < minx || cury > maxy || curx > maxx)
 							cury=miny, curx=minx; // default to beggining
 						move(cury, curx);
+						wmove(query_window, cury - miny, curx - minx);
 
 						bool editing = true;
 						while (editing) {
@@ -983,27 +1013,59 @@ void run_db_interact(MYSQL *con) {
 								case KEY_ESC:
 									query_state = QUERY_STATE_COMMAND;
 									editing = false;
+
+									// test capturing the input
+									chtype chtype_buffer[QUERY_MAX];
+									char buffer[QUERY_MAX];
+									winchstr(query_window, chtype_buffer);
+									for (unsigned int i=0; i < QUERY_MAX; i++) {
+										buffer[i] = chtype_buffer[i] & A_CHARTEXT; // convert to character
+									}
+									xlog(buffer);
+
 									break;
 								// MOVE CURSOR
 								case KEY_LEFT:
 									curx = clampi(curx - 1, minx, maxx);
 									move(cury, curx);
+									wmove(query_window, cury - miny, curx - minx);
 									break;
 								case KEY_RIGHT:
 									curx = clampi(curx + 1, minx, maxx);
 									move(cury, curx);
+									wmove(query_window, cury - miny, curx - minx);
 									break;
 								case KEY_UP:
 									cury = clampi(cury - 1, miny, maxy);
 									move(cury, curx);
+									wmove(query_window, cury - miny, curx - minx);
 									break;
 								case KEY_DOWN:
 									cury = clampi(cury + 1, miny, maxy);
 									move(cury, curx);
+									wmove(query_window, cury - miny, curx - minx);
 									break;
 								// TEXT EDITOR
 								default:
 									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
+									if (key > 31 && key < 127) { // ascii input
+										waddch(query_window, key);
+									}
+									if (key == '\n') { // new line
+										waddch(query_window, '\n');
+									}
+									if (key == KEY_BACKSPACE) { // regular delete
+										curx = clampi(curx - 1, minx, maxx);
+										move(cury, curx);
+										wmove(query_window, cury - miny, curx - minx);
+										wdelch(query_window);
+									}
+									if (key == KEY_DC) { // forward delete
+										wdelch(query_window);
+									}
+									wrefresh(query_window);
+									getyx(query_window, cury,curx);
+									cury += miny; curx += minx;
 									break;
 							}
 						}
