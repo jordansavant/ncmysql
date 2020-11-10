@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <ctype.h>
 #include "sqlops.h"
 #include "ui.h"
 
@@ -189,6 +190,37 @@ void strclr(char *string, int size) {
 	for (int i = 0; i < size; i++) {
 		string[i] = '\0';
 	}
+}
+
+size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
+	if(len == 0)
+		return 0;
+
+	const char *end;
+	size_t out_size;
+
+	// Trim leading space
+	while(isspace((unsigned char)*str)) str++;
+
+	if(*str == 0)  // All spaces?
+	{
+		*out = 0;
+		return 1;
+	}
+
+	// Trim trailing space
+	end = str + strlen(str) - 1;
+	while(end > str && isspace((unsigned char)*end)) end--;
+	end++;
+
+	// Set output size to minimum of trimmed string length and buffer size minus 1
+	out_size = (end - str) < len-1 ? (end - str) : len-1;
+
+	// Copy trimmed string and add null terminator
+	memcpy(out, str, out_size);
+	out[out_size] = 0;
+
+	return out_size;
 }
 
 
@@ -688,7 +720,7 @@ void run_db_interact(MYSQL *con) {
 			//////////////////////////////////////////////
 			// PRINT THE RESULTS PANEL
 			if (result_rerender) {
-				xlog("RERENDER");
+				xlog("  - RERENDER");
 				result_rerender = false;
 				ui_clear_win(result_pad);
 				wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
@@ -867,6 +899,8 @@ void run_db_interact(MYSQL *con) {
 				}
 				case INTERACT_STATE_QUERY:
 					// string bar (none)
+					display_str("");
+
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
 						display_cmd("QUERY", "e/i:edit | enter:execute | tab:next | x:close");
@@ -875,6 +909,8 @@ void run_db_interact(MYSQL *con) {
 					break;
 				case INTERACT_STATE_RESULTS:
 					// string bar (none)
+					display_str("");
+
 					// command bar
 					display_cmd("RESULTS", "tab:next | x:close");
 					break;
@@ -1013,9 +1049,11 @@ void run_db_interact(MYSQL *con) {
 						int cury,curx;
 						getyx(query_window, cury,curx);
 						cury += begy; curx += begx;
-						xlogf("cury=%d curx=%d begy=%d begx=%d maxy=%d maxx=%d\n", cury, curx, begy, begx, maxy, maxx);
+						//xlogf("cury=%d curx=%d begy=%d begx=%d maxy=%d maxx=%d\n", cury, curx, begy, begx, maxy, maxx);
 						if (cury < begy || curx < begx || cury > endy || curx > endx)
 							cury=begy, curx=begx; // default to beggining
+
+						// TODO remove the need for standard move
 						move(cury, curx);
 						wmove(query_window, cury - begy, curx - begx);
 
@@ -1040,6 +1078,8 @@ void run_db_interact(MYSQL *con) {
 										winchstr(query_window, chtype_buffers[r]);
 										// to trim the line we should count backwards until the first character
 										// you see maxx + 1 because maxx is the final index, not the size
+
+										// convert chtypes to characters
 										int ccount = 0;
 										for (int rc=maxx; rc >= 0; rc--) {
 											char character = chtype_buffers[r][rc] & A_CHARTEXT;
@@ -1053,7 +1093,7 @@ void run_db_interact(MYSQL *con) {
 
 										// ccount is the number of characters on the end
 										int strsize = maxx - ccount + 1;
-										xlogf("row %d  ccount %d\n", r, ccount);
+										//xlogf("row %d  ccount %d\n", r, ccount);
 										for (int c=0; c < strsize; c++) {
 											buffer[buffi++] = chtype_buffers[r][c] & A_CHARTEXT;
 										}
@@ -1063,6 +1103,7 @@ void run_db_interact(MYSQL *con) {
 									buffer[buffi-1] = '\0';
 									// capture query
 									set_query(buffer);
+									xlog(buffer);
 
 									break;
 								}
@@ -1091,8 +1132,21 @@ void run_db_interact(MYSQL *con) {
 								default:
 									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 									if (key > 31 && key < 127) { // ascii input
+										int winy, winx;
+										getyx(query_window, winy, winx); // winx is position in line
+										int sizeleft = maxx - winx;
+										// we need to shift everthing after this position over without overflowing the text area
+										chtype contents[maxx];
+										winchstr(query_window, contents); // this captures everything after the cursor
 										// insert the character into the line
 										waddch(query_window, key);
+										// reinsert the remaining characters
+										for (int i=0; i < sizeleft; i++) {
+											char c = contents[i] & A_CHARTEXT;
+											if (c > 31 && c < 127)
+												waddch(query_window, contents[i]);
+										}
+										wmove(query_window, winy, winx+1);
 									}
 									if (key == '\n') { // new line
 										waddch(query_window, '\n');
