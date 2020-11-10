@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
-#include <ctype.h>
+//#include <ctype.h>
 #include "sqlops.h"
 #include "ui.h"
 
@@ -192,36 +192,36 @@ void strclr(char *string, int size) {
 	}
 }
 
-size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
-	if(len == 0)
-		return 0;
-
-	const char *end;
-	size_t out_size;
-
-	// Trim leading space
-	while(isspace((unsigned char)*str)) str++;
-
-	if(*str == 0)  // All spaces?
-	{
-		*out = 0;
-		return 1;
-	}
-
-	// Trim trailing space
-	end = str + strlen(str) - 1;
-	while(end > str && isspace((unsigned char)*end)) end--;
-	end++;
-
-	// Set output size to minimum of trimmed string length and buffer size minus 1
-	out_size = (end - str) < len-1 ? (end - str) : len-1;
-
-	// Copy trimmed string and add null terminator
-	memcpy(out, str, out_size);
-	out[out_size] = 0;
-
-	return out_size;
-}
+//size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
+//	if(len == 0)
+//		return 0;
+//
+//	const char *end;
+//	size_t out_size;
+//
+//	// Trim leading space
+//	while(isspace((unsigned char)*str)) str++;
+//
+//	if(*str == 0)  // All spaces?
+//	{
+//		*out = 0;
+//		return 1;
+//	}
+//
+//	// Trim trailing space
+//	end = str + strlen(str) - 1;
+//	while(end > str && isspace((unsigned char)*end)) end--;
+//	end++;
+//
+//	// Set output size to minimum of trimmed string length and buffer size minus 1
+//	out_size = (end - str) < len-1 ? (end - str) : len-1;
+//
+//	// Copy trimmed string and add null terminator
+//	memcpy(out, str, out_size);
+//	out[out_size] = 0;
+//
+//	return out_size;
+//}
 
 
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
@@ -1254,6 +1254,12 @@ void run_db_interact(MYSQL *con) {
 			break;
 	}
 }
+
+
+// TODO LIST
+// - if password not sent in, scan for it with c prompt
+// - potentially do better cli arguments etc
+// - implement connecting to a local SSH socket https://stackoverflow.com/questions/41170816/ssh-tunnelling-to-mysql-in-c
 
 int main(int argc, char **argv) {
 
