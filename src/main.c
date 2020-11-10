@@ -5,9 +5,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
-//#include <ctype.h>
+#include <ctype.h>
 #include "sqlops.h"
 #include "ui.h"
+#include "pass.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define KEY_RETURN	10
@@ -192,36 +193,36 @@ void strclr(char *string, int size) {
 	}
 }
 
-//size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
-//	if(len == 0)
-//		return 0;
-//
-//	const char *end;
-//	size_t out_size;
-//
-//	// Trim leading space
-//	while(isspace((unsigned char)*str)) str++;
-//
-//	if(*str == 0)  // All spaces?
-//	{
-//		*out = 0;
-//		return 1;
-//	}
-//
-//	// Trim trailing space
-//	end = str + strlen(str) - 1;
-//	while(end > str && isspace((unsigned char)*end)) end--;
-//	end++;
-//
-//	// Set output size to minimum of trimmed string length and buffer size minus 1
-//	out_size = (end - str) < len-1 ? (end - str) : len-1;
-//
-//	// Copy trimmed string and add null terminator
-//	memcpy(out, str, out_size);
-//	out[out_size] = 0;
-//
-//	return out_size;
-//}
+size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
+	if(len == 0)
+		return 0;
+
+	const char *end;
+	size_t out_size;
+
+	// Trim leading space
+	while(isspace((unsigned char)*str)) str++;
+
+	if(*str == 0)  // All spaces?
+	{
+		*out = 0;
+		return 1;
+	}
+
+	// Trim trailing space
+	end = str + strlen(str) - 1;
+	while(end > str && isspace((unsigned char)*end)) end--;
+	end++;
+
+	// Set output size to minimum of trimmed string length and buffer size minus 1
+	out_size = (end - str) < len-1 ? (end - str) : len-1;
+
+	// Copy trimmed string and add null terminator
+	memcpy(out, str, out_size);
+	out[out_size] = 0;
+
+	return out_size;
+}
 
 
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
@@ -355,7 +356,7 @@ void on_term_resize(int dummy) {
 void app_setup() {
 	if (!ncurses_setup())
 		exit(1);
-	xlogopen("logs/log", "w+");
+
 	ui_setup();
 
 	int sx, sy;
@@ -381,7 +382,7 @@ void app_teardown() {
 	delwin(str_window);
 	delwin(cmd_window);
 	delwin(error_window);
-	xlogclose();
+
 	ncurses_teardown();
 }
 
@@ -1261,15 +1262,16 @@ void run_db_interact(MYSQL *con) {
 // - potentially do better cli arguments etc
 // - implement connecting to a local SSH socket https://stackoverflow.com/questions/41170816/ssh-tunnelling-to-mysql-in-c
 
+char *scanpass = NULL;
 int main(int argc, char **argv) {
 
-	app_setup();
+	xlogopen("logs/log", "w+");
 
 	xlog("------- START -------");
 	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
-	if (argc < 4) {
-		xlogf("ERROR: missing connection arg\n");
+	if (argc < 3) {
+		xlogf("ERROR: missing connection args\n");
 		return 1;
 	}
 
@@ -1284,9 +1286,31 @@ int main(int argc, char **argv) {
 				// See if we have any listed connections
 				// TODO read from conf file
 				// TODO malloc the list to make it variable length
+				// note, im just referencing argv, not copying them into new buffers, and argc/argv
+				// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 				app_cons[0].host = argv[1];
 				app_cons[0].user = argv[2];
-				app_cons[0].pass = argv[3];
+				//app_cons[0].pass = argv[3];
+				xlogf("%d\n", argc);
+				if (argc < 4) {
+					// ask for password
+					scanpass = (char*)malloc(256);
+					strclr(scanpass, 256);
+					int nchr = 0;
+					FILE *fp = stdin;
+					while (nchr == 0) {
+						printf("Enter password: ");
+						nchr = getpasswd(&scanpass, 255, '*', fp);
+						if (nchr == 0)
+							printf("\n");
+					}
+					app_cons[0].pass = scanpass;
+
+				} else {
+					app_cons[0].pass = argv[3];
+				}
+
+				app_setup();
 				app_state = APP_STATE_CONNECTION_SELECT;
 				break;
 
@@ -1361,18 +1385,17 @@ int main(int argc, char **argv) {
 				break;
 
 			case APP_STATE_END:
-				xlogf("APP_STATE_END\n");
-				run = false;
-				break;
-
 			case APP_STATE_DIE:
-				xlogf("APP_STATE_DIE\n");
+				xlogf("APP_STATE_END|DIE\n");
 				run = false;
+				app_teardown();
+				if (scanpass)
+					free(scanpass);
 				break;
 		} // end app fsm
 	} // end run loop
 
-	app_teardown();
+	xlogclose();
 	return 0;
 } // end main
 
