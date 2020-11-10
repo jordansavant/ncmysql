@@ -45,18 +45,33 @@ MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 	return result;
 }
 
-MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *errcode) {
+MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode) {
 	if (*errcode = mysql_query(con, query)) {
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = 0;
         return NULL;
 	}
 
 	MYSQL_RES *result = mysql_store_result(con);
+	if (*errcode = mysql_errno(con)) {
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = 0;
+		return NULL;
+	}
+
+	// inserts etc return null
 	if (result == NULL) {
-        die(mysql_error(con));
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = mysql_affected_rows(con);
+		return NULL;
 	}
 
 	*num_fields = mysql_num_fields(result);
 	*num_rows = mysql_num_rows(result);
+	*num_affect_rows = mysql_affected_rows(con);
 	return result;
 }
 

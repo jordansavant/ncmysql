@@ -69,7 +69,7 @@ MYSQL *selected_mysql_conn = NULL;
 #define QUERY_MAX	4096
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
-int the_num_fields=0, the_num_rows=0;
+int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
 bool result_rerender = true;
 int result_shift_r=0, result_shift_c=0;
 
@@ -558,8 +558,8 @@ void set_queryf(char *format, ...) {
 void execute_query() {
 	int errcode;
 	xlog(the_query);
-	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &errcode);
-	if (!the_result) {
+	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &errcode);
+	if (!the_result && errcode > 0) { // inserts have null responses
 		display_error(mysql_error(selected_mysql_conn));
 	}
 	result_rerender = true;
@@ -609,8 +609,8 @@ void run_db_interact(MYSQL *con) {
 			//ui_box(tbl_pad);
 
 			// populate the db table listing
-			int num_fields, num_rows, errcode;
-			tbl_result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &errcode);
+			int num_fields, num_rows, aff_rows, errcode;
+			tbl_result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &aff_rows, &errcode);
 			// TODO handle errocode failure
 			int max_table_name = col_size(tbl_result, 0);
 			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
@@ -838,6 +838,15 @@ void run_db_interact(MYSQL *con) {
 						} // eo while row
 					} // eo if rows
 				} // eo if results
+				else if (the_aff_rows) {
+					char buffer[64];
+					strclr(buffer, 64);
+					sprintf(buffer, "%d %s", the_aff_rows, "affected row(s)");
+
+					wmove(result_pad, 0, 0);
+					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+					waddstr(result_pad, buffer);
+				} // eo if affected rows
 			} // eo if rerender
 
 
