@@ -456,11 +456,12 @@ void display_error(const char *string) {
 
 
 void on_db_select(char *database) {
-	xlogf("db select %s\n", database);
+	//xlogf("db select %s\n", database);
 	db_select(selected_mysql_conn, database);
 	db_selected = true;
 }
 
+int menu_select_pos = 0;
 void run_db_select(MYSQL *con, struct Connection *app_con) {
 
 	refresh();
@@ -521,6 +522,13 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			// post menu to render and draw it first
 			post_menu(my_menu);
 			wrefresh(db_win);
+
+			// reposition the menu from last selection
+			for (int j=0; j < menu_select_pos; j++) {
+				menu_driver(my_menu, REQ_DOWN_ITEM);
+			}
+			wrefresh(db_win);
+
 			// listen for input for the window selection
 			bool done = false;
 			while(!done) {
@@ -528,9 +536,11 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 				switch(c) {
 					case KEY_DOWN:
 						menu_driver(my_menu, REQ_DOWN_ITEM);
+						menu_select_pos = clampi(menu_select_pos + 1, 0, num_rows - 1);
 						break;
 					case KEY_UP:
 						menu_driver(my_menu, REQ_UP_ITEM);
+						menu_select_pos = clampi(menu_select_pos - 1, 0, num_rows - 1);
 						break;
 					case KEY_RETURN: {
 						   void (*callback)(char *);
@@ -903,7 +913,7 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
-						display_cmd("QUERY", "e/i:edit | enter:execute | tab:next | x:close");
+						display_cmd("QUERY", "e/i:edit | enter:execute | del:clear | tab:next | x:close");
 					else
 						display_cmd("EDIT QUERY", "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
