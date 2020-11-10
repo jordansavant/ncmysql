@@ -853,14 +853,14 @@ void run_db_interact(MYSQL *con) {
 					display_str(r[0]);
 
 					// command bar
-					display_cmd("TABLES", "s/ent:select-100 | d:describe | tab:next | x:close");
+					display_cmd("TABLES", "s/enter:select-100 | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
 					// string bar (none)
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
-						display_cmd("QUERY", "e/i:edit | tab:next | x:close");
+						display_cmd("QUERY", "e/i:edit | enter:execute | tab:next | x:close");
 					else
 						display_cmd("EDIT QUERY", "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
@@ -970,6 +970,9 @@ void run_db_interact(MYSQL *con) {
 						curs_set(0);
 						int key = getch();
 						switch (key) {
+							case KEY_RETURN:
+								execute_query();
+								break;
 							case KEY_x:
 								db_state = DB_STATE_END;
 								break;
@@ -990,19 +993,22 @@ void run_db_interact(MYSQL *con) {
 						xlog("   QUERY_STATE_EDIT");
 						curs_set(1);
 
-						int miny,minx, maxy,maxx;
-						getbegyx(query_window, miny, minx);
+						// beg and end are screen coords of editor window
+						// min and max are internal window coords
+						int begy,begx, endx,endy, miny=0,minx=0, maxy,maxx;
+						getbegyx(query_window, begy, begx);
 						getmaxyx(query_window, maxy, maxx);
-						maxy = miny + maxy - 1; maxx = minx + maxx; // add beginning coordinates to max sizes
+						endy = begy + maxy - 1; endx = begx + maxx; // add beginning coordinates to max sizes
 
+						// cur is the position of the cursor within the window
 						int cury,curx;
 						getyx(query_window, cury,curx);
-						cury += miny; curx += minx;
-						xlogf("cury=%d curx=%d miny=%d minx=%d\n", cury, curx, miny, minx);
-						if (cury < miny || curx < minx || cury > maxy || curx > maxx)
-							cury=miny, curx=minx; // default to beggining
+						cury += begy; curx += begx;
+						xlogf("cury=%d curx=%d begy=%d begx=%d maxy=%d maxx=%d\n", cury, curx, begy, begx, maxy, maxx);
+						if (cury < begy || curx < begx || cury > endy || curx > endx)
+							cury=begy, curx=begx; // default to beggining
 						move(cury, curx);
-						wmove(query_window, cury - miny, curx - minx);
+						wmove(query_window, cury - begy, curx - begx);
 
 						bool editing = true;
 						while (editing) {
@@ -1010,54 +1016,85 @@ void run_db_interact(MYSQL *con) {
 							int key = getch();
 							switch (key) {
 								case KEY_ctrl_x:
-								case KEY_ESC:
+								case KEY_ESC: {
 									query_state = QUERY_STATE_COMMAND;
 									editing = false;
 
-									// test capturing the input
-									chtype chtype_buffer[QUERY_MAX];
+									// capture and trim the contents of the window
+									// convert to character buffer for the line
+									chtype chtype_buffers[maxy][maxx];
 									char buffer[QUERY_MAX];
-									winchstr(query_window, chtype_buffer);
-									for (unsigned int i=0; i < QUERY_MAX; i++) {
-										buffer[i] = chtype_buffer[i] & A_CHARTEXT; // convert to character
+									strclr(buffer, QUERY_MAX);
+									int buffi = 0;
+									for (int r=0; r < maxy; r++) {
+										wmove(query_window, r, 0);
+										winchstr(query_window, chtype_buffers[r]);
+										// to trim the line we should count backwards until the first character
+										// you see maxx + 1 because maxx is the final index, not the size
+										int ccount = 0;
+										for (int rc=maxx; rc >= 0; rc--) {
+											char character = chtype_buffers[r][rc] & A_CHARTEXT;
+											if (character < 33 || character > 126)
+												ccount++;
+											else
+												break;
+										}
+										if (maxx + 1 == ccount)
+											continue;
+
+										// ccount is the number of characters on the end
+										int strsize = maxx - ccount + 1;
+										xlogf("row %d  ccount %d\n", r, ccount);
+										for (int c=0; c < strsize; c++) {
+											buffer[buffi++] = chtype_buffers[r][c] & A_CHARTEXT;
+										}
+										buffer[buffi++] = '\n';
 									}
-									xlog(buffer);
+									// trim final newline
+									buffer[buffi-1] = '\0';
+									// capture query
+									set_query(buffer);
 
 									break;
+								}
 								// MOVE CURSOR
 								case KEY_LEFT:
-									curx = clampi(curx - 1, minx, maxx);
+									curx = clampi(curx - 1, begx, endx);
 									move(cury, curx);
-									wmove(query_window, cury - miny, curx - minx);
+									wmove(query_window, cury - begy, curx - begx);
 									break;
 								case KEY_RIGHT:
-									curx = clampi(curx + 1, minx, maxx);
+									curx = clampi(curx + 1, begx, endx);
 									move(cury, curx);
-									wmove(query_window, cury - miny, curx - minx);
+									wmove(query_window, cury - begy, curx - begx);
 									break;
 								case KEY_UP:
-									cury = clampi(cury - 1, miny, maxy);
+									cury = clampi(cury - 1, begy, endy);
 									move(cury, curx);
-									wmove(query_window, cury - miny, curx - minx);
+									wmove(query_window, cury - begy, curx - begx);
 									break;
 								case KEY_DOWN:
-									cury = clampi(cury + 1, miny, maxy);
+									cury = clampi(cury + 1, begy, endy);
 									move(cury, curx);
-									wmove(query_window, cury - miny, curx - minx);
+									wmove(query_window, cury - begy, curx - begx);
 									break;
 								// TEXT EDITOR
 								default:
 									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 									if (key > 31 && key < 127) { // ascii input
+										// insert the character into the line
 										waddch(query_window, key);
 									}
 									if (key == '\n') { // new line
 										waddch(query_window, '\n');
 									}
+									if (key == '\t') { // new line
+										waddch(query_window, '\t');
+									}
 									if (key == KEY_BACKSPACE) { // regular delete
-										curx = clampi(curx - 1, minx, maxx);
+										curx = clampi(curx - 1, begx, endx);
 										move(cury, curx);
-										wmove(query_window, cury - miny, curx - minx);
+										wmove(query_window, cury - begy, curx - begx);
 										wdelch(query_window);
 									}
 									if (key == KEY_DC) { // forward delete
@@ -1065,7 +1102,7 @@ void run_db_interact(MYSQL *con) {
 									}
 									wrefresh(query_window);
 									getyx(query_window, cury,curx);
-									cury += miny; curx += minx;
+									cury += begy; curx += begx;
 									break;
 							}
 						}
