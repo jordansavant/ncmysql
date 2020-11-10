@@ -1019,18 +1019,26 @@ void run_db_interact(MYSQL *con) {
 								execute_query();
 								break;
 							case KEY_x:
+								// Exit database editor
 								db_state = DB_STATE_END;
 								break;
 							case KEY_BTAB:
 							case KEY_TAB:
+								// Shift windows
 								if (key == KEY_TAB)
 									interact_state = INTERACT_STATE_RESULTS;
 								else
 									interact_state = INTERACT_STATE_TABLE_LIST;
 								result_rerender = true;
 								break;
+							case KEY_DC:
+							case KEY_BACKSPACE:
+								// Clear the editor
+								clear_query();
+								break;
 							case KEY_i:
 							case KEY_e:
+								// Insert mode
 								query_state = QUERY_STATE_EDIT;
 								break;
 						}
@@ -1053,7 +1061,6 @@ void run_db_interact(MYSQL *con) {
 						if (cury < begy || curx < begx || cury > endy || curx > endx)
 							cury=begy, curx=begx; // default to beggining
 
-						// TODO remove the need for standard move
 						move(cury, curx);
 						wmove(query_window, cury - begy, curx - begx);
 
