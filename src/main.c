@@ -236,6 +236,30 @@ int nc_strtrimlen(chtype *buff, int size) {
 	return ccount;
 }
 
+int nc_cutline(WINDOW* win, chtype *buff, int startpos, int len) {
+	// get winsize for line lengths
+	int maxy, maxx, winy, winx;
+	getmaxyx(win, maxy, maxx);
+	getyx(win, winy, winx);
+
+	// move cursor to x
+	wmove(win, winy, startpos);
+
+	// capture line
+	winchstr(win, buff);
+
+	// replace trailing whitespace with null characters up to len
+	int untrimmed_len = maxx - startpos;
+	int trimcount = nc_strtrimlen(buff, untrimmed_len);
+	int linesize = untrimmed_len - trimcount + 1;
+	xlogf("%d,%d args:(start=%d, len=%d) ut=%d tr=%d lsz=%d\n", winy,winx, startpos, len, untrimmed_len, trimcount, linesize);
+	if (linesize > 0)
+		for (int i=linesize; i<len; i++)
+			buff[i] = '\0'; // fill the remainder with null
+
+	return linesize;
+}
+
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
 	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
 	// split the text int a bunch of sub strings that represent the words
@@ -1168,62 +1192,66 @@ void run_db_interact(MYSQL *con) {
 										waddch(query_window, '\t');
 									}
 									if (key == KEY_BACKSPACE) { // regular delete
-										// TODO deal with deleting on the beginning of the line
+										int winy, winx;
+										getyx(query_window, winy, winx); // winx is position in line
+
 										if (curx - begx == 0) {
 											// already at beginning of line
 											// clear line and copy contents up to previous line
-											int start_cury=cury, start_curx=curx;
+											int start_winy=winy, start_winx=winx;
+
 											chtype contents[maxx];
 											winchstr(query_window, contents); // get contents
 											wclrtoeol(query_window); // clear line
+
 											// go to line above
-											cury = clampi(cury - 1, begy, endy);
-											int target_cury = cury;
-											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+											winy = clampi(winy - 1, 0, maxy);
+											int target_winy = winy;
+											wmove(query_window, winy, winx);
+
 											// go to end of line
 											chtype uppercontents[maxx];
 											winchstr(query_window, uppercontents);
 											int ucount = nc_strtrimlen(uppercontents, maxx);
 											int strsize = maxx - ucount + 1;
-											curx = clampi(curx + strsize, begx, endx);
-											int target_curx = curx;
-											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+											winx = clampi(winx + strsize, 0, maxx);
+											int target_winx = winx;
+											wmove(query_window, winy, winx);
+
 											// append contents to end of line
 											int icount = nc_strtrimlen(contents, maxx);
 											int istrsize = maxx - icount + 1;
 											for (int i=0; i<istrsize; i++)
 												waddch(query_window, contents[i]);
+
 											// repeat for every Y below our original position
-											for (int y=start_cury; y<maxy - 1; y++) {
-												xlogf("LOOP ON %d\n", y);
+											for (int y=start_winy; y<maxy - 1; y++) {
+												//xlogf("LOOP ON %d\n", y);
 												// move next line to our current line
-												cury = clampi(y + 1, begy, endy); curx = begx;
-												move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+												winy = clampi(y + 1, 0, maxy);
+												winx = 0;
+												wmove(query_window, winy, winx);
+
 												// get line contents
 												chtype linecontents[maxx];
-												winchstr(query_window, linecontents);
-												int trimcount = nc_strtrimlen(linecontents, maxx);
-												int linesize = maxx - trimcount + 1;
+												int sz = nc_cutline(query_window, linecontents, 0, maxx);
 												wclrtoeol(query_window);
-												xlogf("copy from %d,%d size=%d", cury, curx, linesize);
-												if (maxx + 1 == trimcount) {
-													xlog("skipped");
+												//xlogf("copy from %d,%d size=%d\n", winy, winx, sz);
+												if (sz == 0)
 													continue;
-												}
+
 												// copy to line above
-												cury = clampi(y, begy, endy); curx = begx;
-												move(cury, curx); wmove(query_window, cury - begy, curx - begx);
-												xlogf("copy to %d,%d size=%d", cury, curx, linesize);
-												for (int i=0; i<linesize; i++)
+												winy = clampi(y, 0, maxy);
+												wmove(query_window, winy, winx);
+												//xlogf("copy to %d,%d size=%d\n", winy, winx, sz);
+												for (int i=0; i<sz; i++)
 													waddch(query_window, linecontents[i]);
 											}
 											// reset back to original position
-											cury=target_cury, curx=target_curx;
-											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+											wmove(query_window, target_winy, target_winx);
 										} else {
-											curx = clampi(curx - 1, begx, endx);
-											move(cury, curx);
-											wmove(query_window, cury - begy, curx - begx);
+											winx = clampi(winx - 1, 0, maxx);
+											wmove(query_window, winy, winx);
 											wdelch(query_window);
 										}
 									}
@@ -1307,8 +1335,9 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
-// - if password not sent in, scan for it with c prompt
 // - potentially do better cli arguments etc
+// - optional port in the arguments
+// - text editor needs a lot of cleanup
 // - implement connecting to a local SSH socket https://stackoverflow.com/questions/41170816/ssh-tunnelling-to-mysql-in-c
 
 char *scanpass = NULL;
@@ -1333,6 +1362,8 @@ int main(int argc, char **argv) {
 			case APP_STATE_START:
 				xlogf("APP_STATE_START\n");
 				// See if we have any listed connections
+				// TODO SSH connections can be done with a tunnel with, provide instructions to set this up
+				// $ ssh -L localhost:localport:mysqlhost:mysqlport user@sshproxy
 				// TODO read from conf file
 				// TODO malloc the list to make it variable length
 				// note, im just referencing argv, not copying them into new buffers, and argc/argv
