@@ -262,6 +262,17 @@ int nc_cutline(WINDOW* win, chtype *buff, int startpos, int len) {
 	return linesize;
 }
 
+// expects null terminated buff
+void nc_paste(WINDOW* win, chtype *buff) {
+	chtype c;
+	int i=0;
+	while ((c = buff[i]) != '\0') {
+		//xlogf("paste %d %c\n", i, c & A_CHARTEXT);
+		waddch(win, c);
+		i++;
+	}
+}
+
 int nc_mveol(WINDOW *win) {
 	int maxy, maxx, winy, winx;
 	getmaxyx(win, maxy, maxx);
@@ -1224,8 +1235,7 @@ void run_db_interact(MYSQL *con) {
 
 											// copy line and clear line
 											chtype contents[maxx];
-											winchstr(query_window, contents); // get contents
-											wclrtoeol(query_window); // clear line
+											nc_cutline(query_window, contents, 0, maxx);
 
 											// go to line above
 											winy = clampi(winy - 1, 0, maxy);
@@ -1236,10 +1246,7 @@ void run_db_interact(MYSQL *con) {
 											int target_winx = nc_mveol(query_window);
 
 											// append contents to end of line
-											int icount = nc_strtrimlen(contents, maxx);
-											int istrsize = maxx - icount + 1;
-											for (int i=0; i<istrsize; i++)
-												waddch(query_window, contents[i]);
+											nc_paste(query_window, contents);
 
 											// repeat for every Y below our original position
 											for (int y=start_winy; y<maxy - 1; y++) {
@@ -1259,9 +1266,8 @@ void run_db_interact(MYSQL *con) {
 												// copy to line above
 												winy = clampi(y, 0, maxy);
 												wmove(query_window, winy, winx);
+												nc_paste(query_window, linecontents);
 												//xlogf("copy to %d,%d size=%d\n", winy, winx, sz);
-												for (int i=0; i<sz; i++)
-													waddch(query_window, linecontents[i]);
 											}
 											// reset back to original position
 											wmove(query_window, target_winy, target_winx);
