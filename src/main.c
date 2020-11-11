@@ -1143,9 +1143,10 @@ void run_db_interact(MYSQL *con) {
 								default:
 									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 									if (key > 31 && key < 127) { // ascii input
+										// TODO there is a bug, when i insert a character it pushes a space over the next line
 										int winy, winx;
 										getyx(query_window, winy, winx); // winx is position in line
-										int sizeleft = maxx - winx;
+										int sizeleft = maxx - winx - 1;
 										// we need to shift everthing after this position over without overflowing the text area
 										chtype contents[maxx];
 										winchstr(query_window, contents); // this captures everything after the cursor
@@ -1163,6 +1164,7 @@ void run_db_interact(MYSQL *con) {
 										waddch(query_window, '\n');
 									}
 									if (key == '\t') {
+										// TODO this does not deal well when injecting into middle of string
 										waddch(query_window, '\t');
 									}
 									if (key == KEY_BACKSPACE) { // regular delete
@@ -1170,29 +1172,54 @@ void run_db_interact(MYSQL *con) {
 										if (curx - begx == 0) {
 											// already at beginning of line
 											// clear line and copy contents up to previous line
+											int start_cury=cury, start_curx=curx;
 											chtype contents[maxx];
 											winchstr(query_window, contents); // get contents
 											wclrtoeol(query_window); // clear line
 											// go to line above
 											cury = clampi(cury - 1, begy, endy);
-											move(cury, curx);
-											wmove(query_window, cury - begy, curx - begx);
+											int target_cury = cury;
+											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
 											// go to end of line
 											chtype uppercontents[maxx];
 											winchstr(query_window, uppercontents);
 											int ucount = nc_strtrimlen(uppercontents, maxx);
 											int strsize = maxx - ucount + 1;
 											curx = clampi(curx + strsize, begx, endx);
-											move(cury, curx);
-											wmove(query_window, cury - begy, curx - begx);
+											int target_curx = curx;
+											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
 											// append contents to end of line
 											int icount = nc_strtrimlen(contents, maxx);
 											int istrsize = maxx - icount + 1;
 											for (int i=0; i<istrsize; i++)
 												waddch(query_window, contents[i]);
+											// repeat for every Y below our original position
+											for (int y=start_cury; y<maxy - 1; y++) {
+												xlogf("LOOP ON %d\n", y);
+												// move next line to our current line
+												cury = clampi(y + 1, begy, endy); curx = begx;
+												move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+												// get line contents
+												chtype linecontents[maxx];
+												winchstr(query_window, linecontents);
+												int trimcount = nc_strtrimlen(linecontents, maxx);
+												int linesize = maxx - trimcount + 1;
+												wclrtoeol(query_window);
+												xlogf("copy from %d,%d size=%d", cury, curx, linesize);
+												if (maxx + 1 == trimcount) {
+													xlog("skipped");
+													continue;
+												}
+												// copy to line above
+												cury = clampi(y, begy, endy); curx = begx;
+												move(cury, curx); wmove(query_window, cury - begy, curx - begx);
+												xlogf("copy to %d,%d size=%d", cury, curx, linesize);
+												for (int i=0; i<linesize; i++)
+													waddch(query_window, linecontents[i]);
+											}
 											// reset back to original position
-											move(cury, curx);
-											wmove(query_window, cury - begy, curx - begx);
+											cury=target_cury, curx=target_curx;
+											move(cury, curx); wmove(query_window, cury - begy, curx - begx);
 										} else {
 											curx = clampi(curx - 1, begx, endx);
 											move(cury, curx);
