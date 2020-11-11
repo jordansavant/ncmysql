@@ -224,6 +224,17 @@ size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimt
 	return out_size;
 }
 
+int nc_strtrimlen(chtype *buff, int size) {
+	int ccount = 0;
+	for (int rc=size; rc >= 0; rc--) {
+		char character = buff[rc] & A_CHARTEXT;
+		if (character < 33 || character > 126)
+			ccount++;
+		else
+			break;
+	}
+	return ccount;
+}
 
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
 	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
@@ -613,6 +624,7 @@ void execute_query() {
 void clear_query() {
 	the_num_fields = 0;
 	the_num_rows = 0;
+	the_aff_rows = 0;
 	if (the_result) {
 		mysql_free_result(the_result); // free sql memory
 		the_result = NULL;
@@ -865,18 +877,6 @@ void run_db_interact(MYSQL *con) {
 								waddch(result_pad, ' ');
 								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
-
-								//for (unsigned long j = 0; j < max_field_length; j++) {
-								//	char character = row[i][j];
-								//	if (character > 31 && character < 127) {
-								//		// ASCII
-								//		waddch(result_pad, character);
-								//	} else {
-								//		// TODO detect UTF-8, new lines, null chars etc
-								//		waddch(result_pad, ACS_CKBOARD);
-								//	}
-								//}
-								//waddstr(result_pad, "    ");
 							}
 						} // eo while row
 					} // eo if rows
@@ -1098,16 +1098,9 @@ void run_db_interact(MYSQL *con) {
 										// you see maxx + 1 because maxx is the final index, not the size
 
 										// convert chtypes to characters
-										int ccount = 0;
-										for (int rc=maxx; rc >= 0; rc--) {
-											char character = chtype_buffers[r][rc] & A_CHARTEXT;
-											if (character < 33 || character > 126)
-												ccount++;
-											else
-												break;
-										}
+										int ccount = nc_strtrimlen(chtype_buffers[r], maxx);
 										if (maxx + 1 == ccount)
-											continue;
+											continue; // all characters are empty
 
 										// ccount is the number of characters on the end
 										int strsize = maxx - ccount + 1;
@@ -1169,14 +1162,43 @@ void run_db_interact(MYSQL *con) {
 									if (key == '\n') { // new line
 										waddch(query_window, '\n');
 									}
-									if (key == '\t') { // new line
+									if (key == '\t') {
 										waddch(query_window, '\t');
 									}
 									if (key == KEY_BACKSPACE) { // regular delete
-										curx = clampi(curx - 1, begx, endx);
-										move(cury, curx);
-										wmove(query_window, cury - begy, curx - begx);
-										wdelch(query_window);
+										// TODO deal with deleting on the beginning of the line
+										if (curx - begx == 0) {
+											// already at beginning of line
+											// clear line and copy contents up to previous line
+											chtype contents[maxx];
+											winchstr(query_window, contents); // get contents
+											wclrtoeol(query_window); // clear line
+											// go to line above
+											cury = clampi(cury - 1, begy, endy);
+											move(cury, curx);
+											wmove(query_window, cury - begy, curx - begx);
+											// go to end of line
+											chtype uppercontents[maxx];
+											winchstr(query_window, uppercontents);
+											int ucount = nc_strtrimlen(uppercontents, maxx);
+											int strsize = maxx - ucount + 1;
+											curx = clampi(curx + strsize, begx, endx);
+											move(cury, curx);
+											wmove(query_window, cury - begy, curx - begx);
+											// append contents to end of line
+											int icount = nc_strtrimlen(contents, maxx);
+											int istrsize = maxx - icount + 1;
+											for (int i=0; i<istrsize; i++)
+												waddch(query_window, contents[i]);
+											// reset back to original position
+											move(cury, curx);
+											wmove(query_window, cury - begy, curx - begx);
+										} else {
+											curx = clampi(curx - 1, begx, endx);
+											move(cury, curx);
+											wmove(query_window, cury - begy, curx - begx);
+											wdelch(query_window);
+										}
 									}
 									if (key == KEY_DC) { // forward delete
 										wdelch(query_window);
