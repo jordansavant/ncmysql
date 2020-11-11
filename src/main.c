@@ -252,12 +252,34 @@ int nc_cutline(WINDOW* win, chtype *buff, int startpos, int len) {
 	int untrimmed_len = maxx - startpos;
 	int trimcount = nc_strtrimlen(buff, untrimmed_len);
 	int linesize = untrimmed_len - trimcount + 1;
-	xlogf("%d,%d args:(start=%d, len=%d) ut=%d tr=%d lsz=%d\n", winy,winx, startpos, len, untrimmed_len, trimcount, linesize);
+	//xlogf("%d,%d args:(start=%d, len=%d) ut=%d tr=%d lsz=%d\n", winy,winx, startpos, len, untrimmed_len, trimcount, linesize);
 	if (linesize > 0)
 		for (int i=linesize; i<len; i++)
 			buff[i] = '\0'; // fill the remainder with null
 
+	wclrtoeol(query_window); // delete remainder of line
+
 	return linesize;
+}
+
+int nc_mveol(WINDOW *win) {
+	int maxy, maxx, winy, winx;
+	getmaxyx(win, maxy, maxx);
+	getyx(win, winy, winx);
+
+	// move to start of line
+	wmove(win, winy, 0);
+
+	// get contents of line
+	chtype buff[maxx];
+	winchstr(win, buff);
+
+	// get end of text pos
+	int trimlen = nc_strtrimlen(buff, maxx);
+	int endx = maxx - trimlen + 1;
+	wmove(win, winy, endx);
+
+	return endx;
 }
 
 void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
@@ -1200,23 +1222,18 @@ void run_db_interact(MYSQL *con) {
 											// clear line and copy contents up to previous line
 											int start_winy=winy, start_winx=winx;
 
+											// copy line and clear line
 											chtype contents[maxx];
 											winchstr(query_window, contents); // get contents
 											wclrtoeol(query_window); // clear line
 
 											// go to line above
 											winy = clampi(winy - 1, 0, maxy);
-											int target_winy = winy;
 											wmove(query_window, winy, winx);
+											int target_winy = winy;
 
 											// go to end of line
-											chtype uppercontents[maxx];
-											winchstr(query_window, uppercontents);
-											int ucount = nc_strtrimlen(uppercontents, maxx);
-											int strsize = maxx - ucount + 1;
-											winx = clampi(winx + strsize, 0, maxx);
-											int target_winx = winx;
-											wmove(query_window, winy, winx);
+											int target_winx = nc_mveol(query_window);
 
 											// append contents to end of line
 											int icount = nc_strtrimlen(contents, maxx);
@@ -1235,7 +1252,6 @@ void run_db_interact(MYSQL *con) {
 												// get line contents
 												chtype linecontents[maxx];
 												int sz = nc_cutline(query_window, linecontents, 0, maxx);
-												wclrtoeol(query_window);
 												//xlogf("copy from %d,%d size=%d\n", winy, winx, sz);
 												if (sz == 0)
 													continue;
