@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <ctype.h>
+#include <unistd.h>
 #include "sqlops.h"
 #include "ui.h"
 #include "pass.h"
@@ -1311,6 +1312,53 @@ void run_db_interact(MYSQL *con) {
 // - potentially do better cli arguments etc
 // - implement connecting to a local SSH socket https://stackoverflow.com/questions/41170816/ssh-tunnelling-to-mysql-in-c
 
+/*
+ * USAGE
+ * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost]
+ */
+
+
+char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL;
+int parseargs(int argc, char **argv) {
+    opterr = 0; // hide error output
+    int c;
+    // TODO help arg?
+    while ((c = getopt(argc, argv, "h:l:u:p:s:")) != -1) {
+        switch (c) {
+            case 'h': arg_host = optarg; break;
+            case 'l': arg_port = optarg; break;
+            case 'u': arg_user = optarg; break;
+            case 'p': arg_pass = optarg; break;
+            case 's': arg_tunnel = optarg; break;
+            case '?': // appears if unknown option when opterr=0
+                if (optopt == 'h')
+                    fprintf(stderr, "Error: -h missing hostname\n");
+                else if (optopt == 'l')
+                    fprintf(stderr, "Error: -l missing port\n");
+                else if (optopt == 'u')
+                    fprintf(stderr, "Error: -u missing user\n");
+                else if (optopt == 'p')
+                    fprintf(stderr, "Error: -p missing password\n");
+                else if (optopt == 's')
+                    fprintf(stderr, "Error: -s missing ssh tunnel string\n");
+                else if (isprint(optopt))
+                    fprintf(stderr, "Error: unknown option '-%c'\n", c);
+                else
+                    fprintf(stderr, "Error: unknown option '\\x%x'\n", optopt);
+                return 1;
+            default:
+                fprintf(stderr, "Error: unknown getopt error");
+                return 1;
+        }
+    }
+    if (arg_host == NULL)
+        fprintf(stderr, "Error: hostname is required\n");
+    if (arg_user == NULL)
+        fprintf(stderr, "Error: user is required\n");
+    // TODO print usage on error
+    return 0;
+}
+
 char *scanpass = NULL;
 int main(int argc, char **argv) {
 
@@ -1319,10 +1367,11 @@ int main(int argc, char **argv) {
 	xlog("------- START -------");
 	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
-	if (argc < 3) {
-		xlogf("ERROR: missing connection args\n");
-		return 1;
-	}
+    // parse our arguments into data
+    if (parseargs(argc, argv)) {
+        return 1;
+    }
+    //printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
 
 	struct Connection *app_con = NULL;
 	MYSQL *con = NULL;
@@ -1337,11 +1386,9 @@ int main(int argc, char **argv) {
 				// TODO malloc the list to make it variable length
 				// note, im just referencing argv, not copying them into new buffers, and argc/argv
 				// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
-				app_cons[0].host = argv[1];
-				app_cons[0].user = argv[2];
-				//app_cons[0].pass = argv[3];
-				xlogf("%d\n", argc);
-				if (argc < 4) {
+				app_cons[0].host = arg_host;//argv[1];
+				app_cons[0].user = arg_user;//argv[2];
+				if (arg_pass == NULL) {
 					// ask for password
 					scanpass = (char*)malloc(256);
 					strclr(scanpass, 256);
@@ -1356,7 +1403,7 @@ int main(int argc, char **argv) {
 					app_cons[0].pass = scanpass;
 
 				} else {
-					app_cons[0].pass = argv[3];
+					app_cons[0].pass = arg_pass;
 				}
 
 				app_setup();
