@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include "sqlops.h"
 #include "ui.h"
 #include "pass.h"
@@ -1395,9 +1396,9 @@ int parseargs(int argc, char **argv) {
 				else if (optopt == 's')
 					fprintf(stderr, "Error: -s missing ssh tunnel string\n");
 				else if (isprint(optopt))
-					fprintf(stderr, "Error: unknown option '-%c'\n", c);
+					fprintf(stderr, "Error: unknown option '-%c'\n", optopt);
 				else
-					fprintf(stderr, "Error: unknown option '\\x%x'\n", optopt);
+					fprintf(stderr, "Error: unknown option ['\\x%x']\n", optopt);
 				return 1;
 			default:
 				fprintf(stderr, "Error: unknown getopt error");
@@ -1474,12 +1475,38 @@ int main(int argc, char **argv) {
 					app_cons[0].port = 0; // default 3306
 
 				app_setup();
-				app_state = APP_STATE_CONNECTION_SELECT;
+
+				if (arg_tunnel)
+					app_state = APP_STATE_FORK_SSH_TUNNEL;
+				else
+					app_state = APP_STATE_CONNECTION_SELECT;
 				break;
 
-			case APP_STATE_FORK_SSH_TUNNEL:
+			case APP_STATE_FORK_SSH_TUNNEL: {
+				xlogf("APP_STATE_CONNECTION_SELECT\n");
 				// If an ssh tunnel was requested lets fork one
+				int prc = fork();
+				if (prc < 0) {
+					display_error("Unable to create child process for SSH tunnel");
+					app_state = APP_STATE_END;
+					break;
+				}
+				pid_t cpid;
+				if (prc == 0) {
+					// child process: create ssh tunnel in background, allowing for 2 seconds of time for us to connect, if we do not it closes
+					system("ssh -f -L :2222:sts.c0s9xnf5ze2m.us-east-1.rds.amazonaws.com:3306 grimoire sleep 2");
+					//printf("after child\n");
+					return 0;
+				} else {
+					// parent/main: continues on its way
+					cpid = wait(NULL);
+					//printf("parent sees child done\n");
+					app_state = APP_STATE_CONNECTION_SELECT;
+				}
+				//printf("parent pid %d\n", getpid());
+				//printf("child pid %d\n", cpid);
 				break;
+			}
 
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
@@ -1498,9 +1525,11 @@ int main(int argc, char **argv) {
 				if (con == NULL) {
 					display_error(mysql_error(con));
 					app_state = APP_STATE_END;
+					break;
 				}
-				unsigned int ts_sec = 3;
-				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &ts_sec);
+
+				unsigned int timeout = 3;
+				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
 				if (mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->port, NULL, 0) == NULL) {
 					display_error(mysql_error(con));
 					mysql_close(con);
