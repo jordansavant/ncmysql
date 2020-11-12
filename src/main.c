@@ -62,6 +62,7 @@
 //
 struct Connection {
 	char *host;
+	int port;
 	char *user;
 	char *pass;
 };
@@ -80,6 +81,7 @@ int result_shift_r=0, result_shift_c=0;
 //
 enum APP_STATE {
 	APP_STATE_START,
+	APP_STATE_FORK_SSH_TUNNEL,
 	APP_STATE_CONNECTION_SELECT,
 	APP_STATE_CONNECTION_CREATE,
 	APP_STATE_CONNECT,
@@ -1371,50 +1373,50 @@ void run_db_interact(MYSQL *con) {
 
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL;
 int parseargs(int argc, char **argv) {
-    opterr = 0; // hide error output
-    int c;
-    // TODO help arg?
-    while ((c = getopt(argc, argv, "h:l:u:p:s:")) != -1) {
-        switch (c) {
-            case 'h': arg_host = optarg; break;
-            case 'l': arg_port = optarg; break;
-            case 'u': arg_user = optarg; break;
-            case 'p': arg_pass = optarg; break;
-            case 's': arg_tunnel = optarg; break;
-            case '?': // appears if unknown option when opterr=0
-                if (optopt == 'h')
-                    fprintf(stderr, "Error: -h missing hostname\n");
-                else if (optopt == 'l')
-                    fprintf(stderr, "Error: -l missing port\n");
-                else if (optopt == 'u')
-                    fprintf(stderr, "Error: -u missing user\n");
-                else if (optopt == 'p')
-                    fprintf(stderr, "Error: -p missing password\n");
-                else if (optopt == 's')
-                    fprintf(stderr, "Error: -s missing ssh tunnel string\n");
-                else if (isprint(optopt))
-                    fprintf(stderr, "Error: unknown option '-%c'\n", c);
-                else
-                    fprintf(stderr, "Error: unknown option '\\x%x'\n", optopt);
-                return 1;
-            default:
-                fprintf(stderr, "Error: unknown getopt error");
-                return 1;
-        }
-    }
+	opterr = 0; // hide error output
+	int c;
+	// TODO help arg?
+	while ((c = getopt(argc, argv, "h:l:u:p:s:")) != -1) {
+		switch (c) {
+			case 'h': arg_host = optarg; break;
+			case 'l': arg_port = optarg; break;
+			case 'u': arg_user = optarg; break;
+			case 'p': arg_pass = optarg; break;
+			case 's': arg_tunnel = optarg; break;
+			case '?': // appears if unknown option when opterr=0
+				if (optopt == 'h')
+					fprintf(stderr, "Error: -h missing hostname\n");
+				else if (optopt == 'l')
+					fprintf(stderr, "Error: -l missing port\n");
+				else if (optopt == 'u')
+					fprintf(stderr, "Error: -u missing user\n");
+				else if (optopt == 'p')
+					fprintf(stderr, "Error: -p missing password\n");
+				else if (optopt == 's')
+					fprintf(stderr, "Error: -s missing ssh tunnel string\n");
+				else if (isprint(optopt))
+					fprintf(stderr, "Error: unknown option '-%c'\n", c);
+				else
+					fprintf(stderr, "Error: unknown option '\\x%x'\n", optopt);
+				return 1;
+			default:
+				fprintf(stderr, "Error: unknown getopt error");
+				return 1;
+		}
+	}
 	bool invalid = false;
-    if (arg_host == NULL) {
-        fprintf(stderr, "Error: hostname is required\n");
+	if (arg_host == NULL) {
+		fprintf(stderr, "Error: hostname is required\n");
 		invalid = true;
 	}
-    if (arg_user == NULL) {
-        fprintf(stderr, "Error: user is required\n");
+	if (arg_user == NULL) {
+		fprintf(stderr, "Error: user is required\n");
 		invalid = true;
 	}
 	if (invalid)
 		return 1;
-    // TODO print usage on error
-    return 0;
+	// TODO print usage on error
+	return 0;
 }
 
 char *scanpass = NULL;
@@ -1425,11 +1427,11 @@ int main(int argc, char **argv) {
 	xlog("------- START -------");
 	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
-    // parse our arguments into data
-    if (parseargs(argc, argv)) {
-        return 1;
-    }
-    //printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
+	// parse our arguments into data
+	if (parseargs(argc, argv)) {
+		return 1;
+	}
+	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
 
 	struct Connection *app_con = NULL;
 	MYSQL *con = NULL;
@@ -1466,31 +1468,44 @@ int main(int argc, char **argv) {
 					app_cons[0].pass = arg_pass;
 				}
 
+				if (arg_port != NULL && strlen(arg_port) > 0)
+					app_cons[0].port = atoi(arg_port);
+				else
+					app_cons[0].port = 0; // default 3306
+
 				app_setup();
 				app_state = APP_STATE_CONNECTION_SELECT;
+				break;
+
+			case APP_STATE_FORK_SSH_TUNNEL:
+				// If an ssh tunnel was requested lets fork one
 				break;
 
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
 
+				// TODO this was a state to show a list of saved connections, not in use
 				// ncurses menu to show a list of connections to choose from
 				app_con = &app_cons[0];
 				app_state = APP_STATE_CONNECT;
 				break;
 
 			case APP_STATE_CONNECT:
-				xlogf("APP_STATE_CONNECT %s@%s\n", app_con->user, app_con->host);
+				xlogf("APP_STATE_CONNECT %s@%s:%d\n", app_con->user, app_con->host, app_con->port);
 
 				// create mysql connection
 				con = mysql_init(NULL);
 				if (con == NULL) {
-                    display_error(mysql_error(con));
-                    app_state = APP_STATE_END;
+					display_error(mysql_error(con));
+					app_state = APP_STATE_END;
 				}
-				if (mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, 0, NULL, 0) == NULL) {
-                    display_error(mysql_error(con));
+				unsigned int ts_sec = 3;
+				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &ts_sec);
+				if (mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->port, NULL, 0) == NULL) {
+					display_error(mysql_error(con));
 					mysql_close(con);
-                    app_state = APP_STATE_END;
+					app_state = APP_STATE_END;
+					break;
 				}
 
 				conn_established = true;
