@@ -1402,10 +1402,17 @@ int parseargs(int argc, char **argv) {
                 return 1;
         }
     }
-    if (arg_host == NULL)
+	bool invalid = false;
+    if (arg_host == NULL) {
         fprintf(stderr, "Error: hostname is required\n");
-    if (arg_user == NULL)
+		invalid = true;
+	}
+    if (arg_user == NULL) {
         fprintf(stderr, "Error: user is required\n");
+		invalid = true;
+	}
+	if (invalid)
+		return 1;
     // TODO print usage on error
     return 0;
 }
