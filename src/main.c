@@ -63,10 +63,12 @@
 //
 struct Connection {
 	char *host;
-	int port;
+	char *port;
+	int iport;
 	char *user;
 	char *pass;
 };
+#define LOCALHOST "127.0.0.1"
 struct Connection app_cons[20];
 bool conn_established = false;
 bool db_selected = false;
@@ -1421,6 +1423,8 @@ int parseargs(int argc, char **argv) {
 }
 
 char *scanpass = NULL;
+int s_portmax = 2264;
+int s_port = 2200;
 int main(int argc, char **argv) {
 
 	xlogopen("logs/log", "w+");
@@ -1469,21 +1473,26 @@ int main(int argc, char **argv) {
 					app_cons[0].pass = arg_pass;
 				}
 
-				if (arg_port != NULL && strlen(arg_port) > 0)
-					app_cons[0].port = atoi(arg_port);
-				else
-					app_cons[0].port = 0; // default 3306
+				if (arg_port != NULL && strlen(arg_port) > 0) {
+					app_cons[0].iport = atoi(arg_port);
+					app_cons[0].port = arg_port;
+				} else {
+					app_cons[0].iport = 3306; // default 3306
+					app_cons[0].port = "3306";
+				}
 
 				app_setup();
 
-				if (arg_tunnel)
+				if (arg_tunnel != NULL)
 					app_state = APP_STATE_FORK_SSH_TUNNEL;
 				else
 					app_state = APP_STATE_CONNECTION_SELECT;
 				break;
 
 			case APP_STATE_FORK_SSH_TUNNEL: {
-				xlogf("APP_STATE_CONNECTION_SELECT\n");
+				xlogf("APP_STATE_FORK_SSH_TUNNEL\n");
+
+				// switch target mysql host to localhost
 				// If an ssh tunnel was requested lets fork one
 				int prc = fork();
 				if (prc < 0) {
@@ -1494,13 +1503,16 @@ int main(int argc, char **argv) {
 				pid_t cpid;
 				if (prc == 0) {
 					// child process: create ssh tunnel in background, allowing for 2 seconds of time for us to connect, if we do not it closes
-					system("ssh -f -L :2222:sts.c0s9xnf5ze2m.us-east-1.rds.amazonaws.com:3306 grimoire sleep 2");
-					//printf("after child\n");
+					// "ssh -fL 127.0.0.1:$LOCALPORT:$HOSTNAME:$HOSTPORT $TUNNEL sleep 2"
+					//  ^^^^^^^^^^^^^^^^^^          ^         ^         ^       ^^^^^^^^ = 29
+					char buffer[256];
+					snprintf(buffer, 256, "ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d %s sleep 2", s_port, app_cons[0].host, app_cons[0].iport, arg_tunnel);
+					//xlogf("%s\n", buffer);
+					system(buffer);
 					return 0;
 				} else {
 					// parent/main: continues on its way
 					cpid = wait(NULL);
-					//printf("parent sees child done\n");
 					app_state = APP_STATE_CONNECTION_SELECT;
 				}
 				//printf("parent pid %d\n", getpid());
@@ -1518,7 +1530,7 @@ int main(int argc, char **argv) {
 				break;
 
 			case APP_STATE_CONNECT:
-				xlogf("APP_STATE_CONNECT %s@%s:%d\n", app_con->user, app_con->host, app_con->port);
+				xlogf("APP_STATE_CONNECT %s@%s:%d\n", app_con->user, app_con->host, app_con->iport);
 
 				// create mysql connection
 				con = mysql_init(NULL);
@@ -1530,8 +1542,12 @@ int main(int argc, char **argv) {
 
 				unsigned int timeout = 3;
 				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
-				if (mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->port, NULL, 0) == NULL) {
-					display_error(mysql_error(con));
+				if (arg_tunnel)
+					con = mysql_real_connect(con, LOCALHOST, app_con->user, app_con->pass, NULL, s_port, NULL, 0);
+				else
+					con = mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
+				if (con == NULL) {
+					display_error("Connection failed to establish");
 					mysql_close(con);
 					app_state = APP_STATE_END;
 					break;
