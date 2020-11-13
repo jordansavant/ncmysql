@@ -67,12 +67,15 @@ struct Connection {
 	int iport;
 	char *user;
 	char *pass;
+	char *ssh_tunnel;
 };
 #define LOCALHOST "127.0.0.1"
+
 struct Connection app_cons[20];
 bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
+
 #define QUERY_MAX	4096
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
@@ -1363,17 +1366,16 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
-// - potentially do better cli arguments etc
-// - optional port in the arguments
 // - text editor needs a lot of cleanup
-// - implement connecting to a local SSH socket https://stackoverflow.com/questions/41170816/ssh-tunnelling-to-mysql-in-c
+// - connection list, file and menu
+// - cell editor
 
+// note, im just referencing argv, not copying them into new buffers, and argc/argv
+// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 /*
  * USAGE
  * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost]
  */
-
-
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
@@ -1422,8 +1424,8 @@ int parseargs(int argc, char **argv) {
 	return 0;
 }
 
-char *scanpass = NULL;
-int s_portmax = 2264;
+char *scan_pass = NULL;
+int s_portmax = 2203;
 int s_port = 2200;
 int main(int argc, char **argv) {
 
@@ -1447,28 +1449,24 @@ int main(int argc, char **argv) {
 			case APP_STATE_START:
 				xlogf("APP_STATE_START\n");
 				// See if we have any listed connections
-				// TODO SSH connections can be done with a tunnel with, provide instructions to set this up
-				// $ ssh -L localhost:localport:mysqlhost:mysqlport user@sshproxy
 				// TODO read from conf file
 				// TODO malloc the list to make it variable length
-				// note, im just referencing argv, not copying them into new buffers, and argc/argv
-				// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
-				app_cons[0].host = arg_host;//argv[1];
-				app_cons[0].user = arg_user;//argv[2];
+
+				app_cons[0].host = arg_host;
+				app_cons[0].user = arg_user;
+
 				if (arg_pass == NULL) {
 					// ask for password
-					scanpass = (char*)malloc(256);
-					strclr(scanpass, 256);
+					scan_pass = (char*)malloc(256);
+					strclr(scan_pass, 256);
 					int nchr = 0;
-					FILE *fp = stdin;
 					while (nchr == 0) {
 						printf("Enter password: ");
-						nchr = getpasswd(&scanpass, 255, '*', fp);
+						nchr = getpasswd(&scan_pass, 255, '*', stdin);
 						if (nchr == 0)
 							printf("\n");
 					}
-					app_cons[0].pass = scanpass;
-
+					app_cons[0].pass = scan_pass;
 				} else {
 					app_cons[0].pass = arg_pass;
 				}
@@ -1481,12 +1479,26 @@ int main(int argc, char **argv) {
 					app_cons[0].port = "3306";
 				}
 
+				app_cons[0].ssh_tunnel = arg_tunnel;
+
 				app_setup();
 
-				if (arg_tunnel != NULL)
+				app_state = APP_STATE_CONNECTION_SELECT;
+
+				break;
+
+			case APP_STATE_CONNECTION_SELECT:
+				xlogf("APP_STATE_CONNECTION_SELECT\n");
+
+				// TODO this was a state to show a list of saved connections, not in use
+				// ncurses menu to show a list of connections to choose from
+				app_con = &app_cons[0];
+
+				if (app_con->ssh_tunnel != NULL)
 					app_state = APP_STATE_FORK_SSH_TUNNEL;
 				else
-					app_state = APP_STATE_CONNECTION_SELECT;
+					app_state = APP_STATE_CONNECT;
+
 				break;
 
 			case APP_STATE_FORK_SSH_TUNNEL: {
@@ -1504,30 +1516,39 @@ int main(int argc, char **argv) {
 				if (prc == 0) {
 					// child process: create ssh tunnel in background, allowing for 2 seconds of time for us to connect, if we do not it closes
 					// "ssh -fL 127.0.0.1:$LOCALPORT:$HOSTNAME:$HOSTPORT $TUNNEL sleep 2"
-					//  ^^^^^^^^^^^^^^^^^^          ^         ^         ^       ^^^^^^^^ = 29
-					char buffer[256];
-					snprintf(buffer, 256, "ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d %s sleep 2", s_port, app_cons[0].host, app_cons[0].iport, arg_tunnel);
+					bool established = false;
+					while (!established && s_port < s_portmax) {
+						xlogf("- TUNNEL ATTEMPTS ON %d\n", s_port);
+						char buffer[256];
+						snprintf(buffer, 256,
+								"ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d -o ExitOnForwardFailure=yes %s sleep 2",
+								s_port, app_con->host, app_con->iport, app_con->ssh_tunnel);
+						int sys_exit = system(buffer);
+						int ssh_exit = WEXITSTATUS(sys_exit);
+						xlogf("- CHILD SYSTEM r=%d W=%d\n", sys_exit, ssh_exit);
+						// system will return a -1 if it straight up failed to fork the child process for system (not the same as the exit code of the command)
+						// ssh will return a 255 if the commmand failed because of the ExitOnForwardFailure=yes arg
+						if (sys_exit == -1 || ssh_exit == 255) {
+							s_port++;
+							xlogf("- TUNNEL CONNECT FAILURE TRYING NEXT PORT %d\n", s_port);
+						} else {
+							established = true;
+						}
+					}
+					// TODO if we failed after our attempts then notify the parent process somehow?
+					// return nonzero from child and capture it?
 					//xlogf("%s\n", buffer);
-					system(buffer);
-					return 0;
+					return 0; // child can exit
 				} else {
-					// parent/main: continues on its way
+					// parent/main: continues on its way, waiting on child to establish its connection
 					cpid = wait(NULL);
-					app_state = APP_STATE_CONNECTION_SELECT;
+					app_state = APP_STATE_CONNECT;
+					xlogf("- PARENT SEES CHILD DONE\n");
 				}
 				//printf("parent pid %d\n", getpid());
 				//printf("child pid %d\n", cpid);
 				break;
 			}
-
-			case APP_STATE_CONNECTION_SELECT:
-				xlogf("APP_STATE_CONNECTION_SELECT\n");
-
-				// TODO this was a state to show a list of saved connections, not in use
-				// ncurses menu to show a list of connections to choose from
-				app_con = &app_cons[0];
-				app_state = APP_STATE_CONNECT;
-				break;
 
 			case APP_STATE_CONNECT:
 				xlogf("APP_STATE_CONNECT %s@%s:%d\n", app_con->user, app_con->host, app_con->iport);
@@ -1540,13 +1561,18 @@ int main(int argc, char **argv) {
 					break;
 				}
 
+				// If we are connecting through an established tunnel, then target localhost at our local port
+				// otherwise connect to server naturally
 				unsigned int timeout = 3;
 				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
-				if (arg_tunnel)
+				if (app_con->ssh_tunnel)
 					con = mysql_real_connect(con, LOCALHOST, app_con->user, app_con->pass, NULL, s_port, NULL, 0);
 				else
 					con = mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
+
 				if (con == NULL) {
+					// TODO I tried the mysql_con_err function but it didnt return any information
+					// when we failed to connect through a phony ssh tunnel
 					display_error("Connection failed to establish");
 					mysql_close(con);
 					app_state = APP_STATE_END;
@@ -1580,7 +1606,6 @@ int main(int argc, char **argv) {
 				// with a db selected lets run the selected db state
 				run_db_interact(con);
 
-				//app_state = APP_STATE_DISCONNECT;
 				break;
 
 			case APP_STATE_DB_INTERACT_END:
@@ -1605,8 +1630,8 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_END|DIE\n");
 				run = false;
 				app_teardown();
-				if (scanpass)
-					free(scanpass);
+				if (scan_pass)
+					free(scan_pass);
 				break;
 		} // end app fsm
 	} // end run loop
