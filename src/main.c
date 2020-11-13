@@ -1425,7 +1425,7 @@ int parseargs(int argc, char **argv) {
 }
 
 char *scan_pass = NULL;
-int s_portmax = 2203;
+int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
 
@@ -1518,7 +1518,7 @@ int main(int argc, char **argv) {
 					// "ssh -fL 127.0.0.1:$LOCALPORT:$HOSTNAME:$HOSTPORT $TUNNEL sleep 2"
 					bool established = false;
 					while (!established && s_port < s_portmax) {
-						xlogf("- TUNNEL ATTEMPTS ON %d\n", s_port);
+						xlogf("- CHILD TUNNEL ATTEMPTS ON %d\n", s_port);
 						char buffer[256];
 						snprintf(buffer, 256,
 								"ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d -o ExitOnForwardFailure=yes %s sleep 2",
@@ -1530,20 +1530,27 @@ int main(int argc, char **argv) {
 						// ssh will return a 255 if the commmand failed because of the ExitOnForwardFailure=yes arg
 						if (sys_exit == -1 || ssh_exit == 255) {
 							s_port++;
-							xlogf("- TUNNEL CONNECT FAILURE TRYING NEXT PORT %d\n", s_port);
+							xlogf("- CHILD TUNNEL CONNECT FAILURE\n", s_port);
 						} else {
 							established = true;
 						}
 					}
-					// TODO if we failed after our attempts then notify the parent process somehow?
-					// return nonzero from child and capture it?
-					//xlogf("%s\n", buffer);
-					return 0; // child can exit
+					if (!established)
+						return 1;
+					return 0;
 				} else {
 					// parent/main: continues on its way, waiting on child to establish its connection
-					cpid = wait(NULL);
-					app_state = APP_STATE_CONNECT;
-					xlogf("- PARENT SEES CHILD DONE\n");
+					int child_exit;
+					cpid = wait(&child_exit);
+					child_exit = WEXITSTATUS(child_exit);
+					xlogf("- PARENT SEES CHILD DONE %d\n", child_exit);
+					if (child_exit == 1) {
+						// ssh tunnel failed
+						display_error("Failed to establish SSH tunnel: all ports are taken or invalid ssh host");
+						app_state = APP_STATE_END;
+					} else {
+						app_state = APP_STATE_CONNECT;
+					}
 				}
 				//printf("parent pid %d\n", getpid());
 				//printf("child pid %d\n", cpid);
