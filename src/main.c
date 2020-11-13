@@ -436,15 +436,12 @@ void app_setup() {
 
 	ui_setup();
 
-	int sx, sy;
-	getmaxyx(stdscr, sy, sx);
-
-	// TODO deal with window resize
 	error_window = newwin(0,0,0,0);
 	str_window = newwin(0,0,0,0);
 	cmd_window = newwin(0,0,0,0);
 	query_window = newwin(0,0,0,0);
 	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
+
 	app_ui_layout();
 
 	strclr(the_query, QUERY_MAX);
@@ -714,27 +711,18 @@ void run_db_interact(MYSQL *con) {
 	switch (db_state) {
 		case DB_STATE_START: {
 			xlog(" DB_STATE_START");
-			// build the curses windows
-			// left side is the table menu
-			// center top is the query window
-			// center bottom is the result window
-			//tbl_pad = newwin(0,0,0,0);
+
 			tbl_pad = newpad(tbl_pad_h, tbl_pad_w); // h, w
 			tbl_index = 0; // default to first table
 			tbl_count = 0;
 			tbl_result = NULL;
-
-			// inventory window
-			//int rows = sy; int cols = 28;
-			//ui_anchor_ul(tbl_pad, rows, cols);
-			//ui_box(tbl_pad);
 
 			// populate the db table listing
 			int num_fields, num_rows, aff_rows, errcode;
 			tbl_result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &aff_rows, &errcode);
 			// TODO handle errocode failure
 			int max_table_name = col_size(tbl_result, 0);
-			xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
+			//xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 			tbl_count = num_rows;
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
@@ -1366,16 +1354,19 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
-// - text editor needs a lot of cleanup
+// - text editor needs a lot of quol work
 // - connection list, file and menu
 // - cell editor
+// - usage message
+// - dynamic pad size for result set, right now its fixed
+// - build on os x
 
-// note, im just referencing argv, not copying them into new buffers, and argc/argv
-// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 /*
  * USAGE
  * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost]
  */
+// note, im just referencing argv, not copying them into new buffers, and argc/argv
+// "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
@@ -1431,7 +1422,7 @@ int main(int argc, char **argv) {
 
 	xlogopen("logs/log", "w+");
 
-	xlog("------- START -------");
+	xlog("....... START .......");
 	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
 	// parse our arguments into data
@@ -1578,9 +1569,7 @@ int main(int argc, char **argv) {
 					con = mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
 
 				if (con == NULL) {
-					// TODO I tried the mysql_con_err function but it didnt return any information
-					// when we failed to connect through a phony ssh tunnel
-					display_error("Connection failed to establish");
+					display_error(mysql_error(con));
 					mysql_close(con);
 					app_state = APP_STATE_END;
 					break;
@@ -1643,6 +1632,7 @@ int main(int argc, char **argv) {
 		} // end app fsm
 	} // end run loop
 
+	xlog("........ END ........");
 	xlogclose();
 	return 0;
 } // end main
