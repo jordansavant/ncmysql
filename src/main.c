@@ -60,8 +60,10 @@
 #define KEY_9		57
 
 // DB CONNECTION INFORMATION
-//
+// We need to rely on that these values, be them populated from args or from
+// file that the strings are malloc'd values
 struct Connection {
+	bool isset;
 	char *host;
 	char *port;
 	int iport;
@@ -69,12 +71,29 @@ struct Connection {
 	char *pass;
 	char *ssh_tunnel;
 };
-#define LOCALHOST "127.0.0.1"
-
-struct Connection app_cons[20];
+void init_conn(struct Connection *conn) {
+	conn->isset = false;
+	conn->host = NULL;
+	conn->port = NULL;
+	conn->iport = 0;
+	conn->user = NULL;
+	conn->pass = NULL;
+	conn->ssh_tunnel = NULL;
+}
+void free_conn(struct Connection *conn) {
+	free(conn->host);
+	free(conn->port);
+	free(conn->user);
+	free(conn->pass);
+	free(conn->ssh_tunnel);
+}
+#define CONNECTION_COUNT 20
+//struct Connection **app_cons;
+struct Connection* app_cons[CONNECTION_COUNT];
 bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
+#define LOCALHOST "127.0.0.1"
 
 #define QUERY_MAX	4096
 char the_query[QUERY_MAX];
@@ -186,6 +205,16 @@ void xlogf(char *format, ...) {
 	//fprintf(_fp, "\n");
 	va_end(argptr);
 	fflush(_fp);
+}
+void xlog_conn(struct Connection *con) {
+	xlogf("%s:%s@%s:%s/%d << %s\n",
+		con->user,
+		con->pass,
+		con->host,
+		con->port,
+		con->iport,
+		con->ssh_tunnel
+	 );
 }
 
 int charreplace(char *str, char orig, char rep) {
@@ -559,6 +588,8 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			// Get DBs
 			int num_fields, num_rows;
 			MYSQL_RES *result = con_select(con, &num_fields, &num_rows);
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
+
 			// determine widest db name
 			int dblen = 0;
 			MYSQL_ROW row1;
@@ -566,27 +597,33 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 				int d = (int)strlen(row1[0]);
 				dblen = maxi(d, dblen);
 			}
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// allocate window for db menu
 			int frame_width = dblen + 5;// 7; // |_>_[label]_|
 			int frame_height = num_rows + 2;
 			int offset_rows = 10;
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 			wbkgd(db_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 			keypad(db_win, TRUE);
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// allocate menu
 			ITEM **my_items;
 			MENU *my_menu;
 			my_items = (ITEM **)calloc(num_rows + 1, sizeof(ITEM *));
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// iterate over dbs and add them to the menu as items
 			int i=0;
 			MYSQL_ROW row2;
 			mysql_data_seek(result, 0);
 			while (row2 = mysql_fetch_row(result)) {
+				xlogf("%s\n", row2[0]);
 				my_items[i] = new_item(row2[0], "");
 				set_item_userptr(my_items[i], on_db_select);
 				i++;
 			}
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			my_items[num_rows] = (ITEM*)NULL; // final element should be null
 			my_menu = new_menu((ITEM **)my_items);
 			// set menu styles and into parent
@@ -596,17 +633,23 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			set_menu_mark(my_menu, "");
 			set_menu_win(my_menu, db_win);
 			set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 4, 1, 2)); // (h, w, offy, offx) from parent window
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// post menu to render and draw it first
 			post_menu(my_menu);
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			wrefresh(db_win);
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// reposition the menu from last selection
 			for (int j=0; j < menu_select_pos; j++) {
 				menu_driver(my_menu, REQ_DOWN_ITEM);
 			}
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			wrefresh(db_win);
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// listen for input for the window selection
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			bool done = false;
 			while(!done) {
 				int c = getch();
@@ -648,6 +691,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			delwin(db_win);
 			mysql_free_result(result); // free sql memory
 			clear();
+			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			break;
 		}
 
@@ -1365,22 +1409,23 @@ void run_db_interact(MYSQL *con) {
 
 /*
  * USAGE
- * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost]
+ * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost] [-f connectfile]
  */
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
-char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL;
+char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
 	// TODO help arg?
-	while ((c = getopt(argc, argv, "h:l:u:p:s:")) != -1) {
+	while ((c = getopt(argc, argv, "h:l:u:p:s:f:")) != -1) {
 		switch (c) {
 			case 'h': arg_host = optarg; break;
 			case 'l': arg_port = optarg; break;
 			case 'u': arg_user = optarg; break;
 			case 'p': arg_pass = optarg; break;
 			case 's': arg_tunnel = optarg; break;
+			case 'f': arg_confile = optarg; break;
 			case '?': // appears if unknown option when opterr=0
 				if (optopt == 'h')
 					fprintf(stderr, "Error: -h missing hostname\n");
@@ -1404,6 +1449,15 @@ int parseargs(int argc, char **argv) {
 	}
 	// TODO print usage on error
 	return 0;
+}
+
+const char* getfield(char* line, int num) {
+	const char* tok;
+	for (tok = strtok(line, ";"); tok && *tok; tok = strtok(NULL, ";\n")) {
+		if (!--num)
+			return tok;
+	}
+	return NULL;
 }
 
 char *scan_pass = NULL;
@@ -1431,6 +1485,13 @@ int main(int argc, char **argv) {
 			case APP_STATE_START:
 				xlogf("APP_STATE_START\n");
 
+				// init our connection structs
+				//app_cons = (struct Connection**)malloc(sizeof(struct Connection*) * CONNECTION_COUNT);
+				for (int i=0; i < CONNECTION_COUNT; i++) {
+					app_cons[i] = (struct Connection*)malloc(sizeof(struct Connection));
+					init_conn(app_cons[i]);
+				}
+
 				// If we had some args that specify loading a connection directly then run that
 				// otherwise go to file connection loader
 				if (arg_host)
@@ -1454,8 +1515,12 @@ int main(int argc, char **argv) {
 				if (invalid)
 					return 1;
 
-				app_cons[0].host = arg_host;
-				app_cons[0].user = arg_user;
+				// strdups are used to copy global argv values into heap
+				// so we can free the connection the same way for cmd line arg strings
+				// and file strings from the connection file
+				app_cons[0]->isset = true;
+				app_cons[0]->host = strdup(arg_host);
+				app_cons[0]->user = strdup(arg_user);
 
 				if (arg_pass == NULL) {
 					// ask for password
@@ -1468,20 +1533,21 @@ int main(int argc, char **argv) {
 						if (nchr == 0)
 							printf("\n");
 					}
-					app_cons[0].pass = scan_pass;
+					app_cons[0]->pass = scan_pass;
 				} else {
-					app_cons[0].pass = arg_pass;
+					app_cons[0]->pass = strdup(arg_pass);
 				}
 
 				if (arg_port != NULL && strlen(arg_port) > 0) {
-					app_cons[0].iport = atoi(arg_port);
-					app_cons[0].port = arg_port;
+					app_cons[0]->iport = atoi(arg_port);
+					app_cons[0]->port = strdup(arg_port);
 				} else {
-					app_cons[0].iport = 3306; // default 3306
-					app_cons[0].port = "3306";
+					app_cons[0]->iport = 3306; // default 3306
+					app_cons[0]->port = strdup("3306");
 				}
 
-				app_cons[0].ssh_tunnel = arg_tunnel;
+				if (arg_tunnel)
+					app_cons[0]->ssh_tunnel = strdup(arg_tunnel);
 
 				app_setup(); // setup ncurses control
 
@@ -1499,16 +1565,78 @@ int main(int argc, char **argv) {
 				// - if file found, load connections into menu for selection
 				// - on selection, choose it as the app_con
 
-				app_state = APP_STATE_END;
+				FILE* fp = NULL;
+				if (arg_confile) {
+					fp = fopen(arg_confile, "r");
+				} else {
+					// TODO try to get local hidden conf file
+				}
+
+				if (fp) {
+					xlogf("reading file %s\n", arg_confile);
+					char line[1024];
+					int i = 0;
+					while (fgets(line, 1024, fp)) {
+						xlogf("read for conn %d\n", i);
+						//printf("%s %d \n", line, (int)strlen(line));
+
+						// the getfield uses strtok which fubars the data so i copy the line for as many fields, not ideal
+						// also we put in the heap so substrings found have stable addresses
+						char *tmp_for_name = strdup(line);
+						char *tmp_for_host = strdup(line);
+						char *tmp_for_port = strdup(line);
+						char *tmp_for_user = strdup(line);
+						char *tmp_for_pass = strdup(line);
+						char *tmp_for_tunnel = strdup(line);
+
+						const char *f_name = getfield(tmp_for_name, 1);
+						const char *f_host = getfield(tmp_for_host, 2);
+						const char *f_port = getfield(tmp_for_port, 3);
+						const char *f_user = getfield(tmp_for_user, 4);
+						const char *f_pass = getfield(tmp_for_pass, 5);
+						const char *f_tunnel = getfield(tmp_for_tunnel, 6);
+						// printf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+
+						// TODO copy to connnections
+						app_cons[i]->isset = true;
+						app_cons[i]->host = strdup(f_host);
+						app_cons[i]->port = strdup(f_port);
+						app_cons[i]->iport = atoi(f_port);
+						app_cons[i]->user = strdup(f_user);
+						app_cons[i]->pass = strdup(f_pass);
+						app_cons[i]->ssh_tunnel = strdup(f_tunnel);
+
+						free(tmp_for_tunnel);
+						free(tmp_for_pass);
+						free(tmp_for_user);
+						free(tmp_for_port);
+						free(tmp_for_host);
+						free(tmp_for_name);
+
+						i++;
+					}
+				}
+
+				app_state = APP_STATE_CONNECTION_SELECT;
 
 				break;
 
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
 
+				// lets see what we have allocated
+				for (int i=0; i < CONNECTION_COUNT; i++) {
+					if (app_cons[i]->isset) {
+						//xlogf("CON %d ISSET\n", i);
+						//xlog_conn(app_cons[i]);
+					} else {
+						//xlogf("CON %d NOTSET\n", i);
+					}
+				}
+
 				// TODO this was a state to show a list of saved connections, not in use
 				// ncurses menu to show a list of connections to choose from
-				app_con = &app_cons[0];
+				app_con = app_cons[0];
 
 				if (app_con->ssh_tunnel != NULL)
 					app_state = APP_STATE_FORK_SSH_TUNNEL;
@@ -1651,8 +1779,20 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_END|DIE\n");
 				run = false;
 				app_teardown();
-				if (scan_pass)
-					free(scan_pass);
+
+				// no longer freeing this directly as it is referenced by the app_con
+				// and freed below
+				// if (scan_pass)
+				// 	free(scan_pass);
+
+				// free connection memory
+				for (int i=0; i < CONNECTION_COUNT; i++) {
+					if (app_cons[i]->isset) {
+						free_conn(app_cons[i]);
+					}
+					free(app_cons[i]);
+				}
+
 				break;
 		} // end app fsm
 	} // end run loop

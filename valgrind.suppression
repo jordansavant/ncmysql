@@ -1,0 +1,13 @@
+{
+   ignore_ncurses_memory_leaks
+   Memcheck:Leak
+   ...
+   obj:*/libncurses.so.*
+}
+{
+   ignore_libtinfo_memory_leads
+   Memcheck:Leak
+   ...
+   obj:*/libtinfo.so.*
+}
+
