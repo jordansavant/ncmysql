@@ -87,8 +87,10 @@ int result_shift_r=0, result_shift_c=0;
 //
 enum APP_STATE {
 	APP_STATE_START,
-	APP_STATE_FORK_SSH_TUNNEL,
+	APP_STATE_ARGS_TO_CONNECTION,
+	APP_STATE_LOAD_CONNECTION_FILE,
 	APP_STATE_CONNECTION_SELECT,
+	APP_STATE_FORK_SSH_TUNNEL,
 	APP_STATE_CONNECTION_CREATE,
 	APP_STATE_CONNECT,
 	APP_STATE_DB_SELECT,
@@ -1400,17 +1402,6 @@ int parseargs(int argc, char **argv) {
 				return 1;
 		}
 	}
-	bool invalid = false;
-	if (arg_host == NULL) {
-		fprintf(stderr, "Error: hostname is required\n");
-		invalid = true;
-	}
-	if (arg_user == NULL) {
-		fprintf(stderr, "Error: user is required\n");
-		invalid = true;
-	}
-	if (invalid)
-		return 1;
 	// TODO print usage on error
 	return 0;
 }
@@ -1439,9 +1430,29 @@ int main(int argc, char **argv) {
 		switch (app_state) {
 			case APP_STATE_START:
 				xlogf("APP_STATE_START\n");
-				// See if we have any listed connections
-				// TODO read from conf file
-				// TODO malloc the list to make it variable length
+
+				// If we had some args that specify loading a connection directly then run that
+				// otherwise go to file connection loader
+				if (arg_host)
+					app_state = APP_STATE_ARGS_TO_CONNECTION;
+				else
+					app_state = APP_STATE_LOAD_CONNECTION_FILE;
+				break;
+
+			case APP_STATE_ARGS_TO_CONNECTION:
+				xlog("APP_STATE_ARGS_TO_CONNECTION");
+
+				bool invalid = false;
+				if (arg_host == NULL) {
+					fprintf(stderr, "Error: hostname is required\n");
+					invalid = true;
+				}
+				if (arg_user == NULL) {
+					fprintf(stderr, "Error: user is required\n");
+					invalid = true;
+				}
+				if (invalid)
+					return 1;
 
 				app_cons[0].host = arg_host;
 				app_cons[0].user = arg_user;
@@ -1472,9 +1483,23 @@ int main(int argc, char **argv) {
 
 				app_cons[0].ssh_tunnel = arg_tunnel;
 
-				app_setup();
+				app_setup(); // setup ncurses control
 
 				app_state = APP_STATE_CONNECTION_SELECT;
+
+				break;
+
+			case APP_STATE_LOAD_CONNECTION_FILE:
+				xlog("APP_STATE_LOAD_CONNECTION_FILE");
+
+				// TODO
+				// - was a path to a conf file provided?
+				// - if not is there a hidden local conf file?
+				// - if no file detected TODO build a create mode?
+				// - if file found, load connections into menu for selection
+				// - on selection, choose it as the app_con
+
+				app_state = APP_STATE_END;
 
 				break;
 
