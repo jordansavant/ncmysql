@@ -64,6 +64,7 @@
 // file that the strings are malloc'd values
 struct Connection {
 	bool isset;
+	char *name;
 	char *host;
 	char *port;
 	int iport;
@@ -73,6 +74,7 @@ struct Connection {
 };
 void init_conn(struct Connection *conn) {
 	conn->isset = false;
+	conn->name = NULL;
 	conn->host = NULL;
 	conn->port = NULL;
 	conn->iport = 0;
@@ -81,6 +83,7 @@ void init_conn(struct Connection *conn) {
 	conn->ssh_tunnel = NULL;
 }
 void free_conn(struct Connection *conn) {
+	free(conn->name);
 	free(conn->host);
 	free(conn->port);
 	free(conn->user);
@@ -188,17 +191,17 @@ int clampi(int v, int min, int max) {
 
 
 FILE* _fp;
-void xlogopen(char *location, char *mode) {
+void xlogopen(const char *location, char *mode) {
 	_fp = fopen(location, mode);
 }
 void xlogclose() {
 	fclose(_fp);
 }
-void xlog(char *msg) {
+void xlog(const char *msg) {
 	fprintf(_fp, "%s\n", msg);
 	fflush(_fp);
 }
-void xlogf(char *format, ...) {
+void xlogf(const char *format, ...) {
 	va_list argptr;
 	va_start(argptr, format);
 	vfprintf(_fp, format, argptr);
@@ -609,23 +612,24 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			keypad(db_win, TRUE);
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// allocate menu
-			ITEM **my_items;
 			MENU *my_menu;
-			my_items = (ITEM **)calloc(num_rows + 1, sizeof(ITEM *));
+			ITEM **my_items = (ITEM **)calloc(num_rows + 1, sizeof(ITEM *));
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// iterate over dbs and add them to the menu as items
 			int i=0;
 			MYSQL_ROW row2;
 			mysql_data_seek(result, 0);
 			while (row2 = mysql_fetch_row(result)) {
-				xlogf("%s\n", row2[0]);
+				xlogf("table: %s\n", row2[0]);
 				my_items[i] = new_item(row2[0], "");
 				set_item_userptr(my_items[i], on_db_select);
 				i++;
 			}
+
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			my_items[num_rows] = (ITEM*)NULL; // final element should be null
 			my_menu = new_menu((ITEM **)my_items);
+
 			// set menu styles and into parent
 			set_menu_fore(my_menu, COLOR_PAIR(COLOR_BLACK_CYAN));
 			set_menu_back(my_menu, COLOR_PAIR(COLOR_WHITE_BLUE));
@@ -634,6 +638,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			set_menu_win(my_menu, db_win);
 			set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 4, 1, 2)); // (h, w, offy, offx) from parent window
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
+
 			// post menu to render and draw it first
 			post_menu(my_menu);
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
@@ -685,11 +690,15 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			}
 			// with DB selected free menu memory
 			unpost_menu(my_menu);
-			for(int i = 0; i < num_rows; i++)
-				free_item(my_items[i]);
+			for(int i = 0; i < num_rows; i++) {
+				free_item(my_items[i]); // new_item is only called on 0 thru num_rows
+			}
 			free_menu(my_menu);
+			free(my_items);
 			delwin(db_win);
+
 			mysql_free_result(result); // free sql memory
+
 			clear();
 			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			break;
@@ -1465,6 +1474,9 @@ int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
 
+	struct Connection *app_con = NULL;
+	MYSQL *con = NULL;
+
 	xlogopen("logs/log", "w+");
 
 	xlog("....... START .......");
@@ -1476,8 +1488,6 @@ int main(int argc, char **argv) {
 	}
 	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
 
-	struct Connection *app_con = NULL;
-	MYSQL *con = NULL;
 
 	bool run = true;
 	while (run) {
@@ -1549,8 +1559,6 @@ int main(int argc, char **argv) {
 				if (arg_tunnel)
 					app_cons[0]->ssh_tunnel = strdup(arg_tunnel);
 
-				app_setup(); // setup ncurses control
-
 				app_state = APP_STATE_CONNECTION_SELECT;
 
 				break;
@@ -1595,26 +1603,30 @@ int main(int argc, char **argv) {
 						const char *f_user = getfield(tmp_for_user, 4);
 						const char *f_pass = getfield(tmp_for_pass, 5);
 						const char *f_tunnel = getfield(tmp_for_tunnel, 6);
-						// printf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+						//xlogf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
 
-						// TODO copy to connnections
+						// TODO There are memory leaks coming from strdup
+						// even though we are running free on the app_conn property
 						app_cons[i]->isset = true;
+						app_cons[i]->name = strdup(f_name);
 						app_cons[i]->host = strdup(f_host);
 						app_cons[i]->port = strdup(f_port);
-						app_cons[i]->iport = atoi(f_port);
 						app_cons[i]->user = strdup(f_user);
 						app_cons[i]->pass = strdup(f_pass);
 						app_cons[i]->ssh_tunnel = strdup(f_tunnel);
+						app_cons[i]->iport = atoi(f_port);
 
-						free(tmp_for_tunnel);
 						free(tmp_for_pass);
-						free(tmp_for_user);
-						free(tmp_for_port);
-						free(tmp_for_host);
 						free(tmp_for_name);
+						free(tmp_for_host);
+						free(tmp_for_port);
+						free(tmp_for_user);
+						free(tmp_for_tunnel);
 
 						i++;
 					}
+
+					fclose(fp);
 				}
 
 				app_state = APP_STATE_CONNECTION_SELECT;
@@ -1623,6 +1635,8 @@ int main(int argc, char **argv) {
 
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
+
+				app_setup(); // setup ncurses control
 
 				// lets see what we have allocated
 				for (int i=0; i < CONNECTION_COUNT; i++) {
@@ -1637,6 +1651,7 @@ int main(int argc, char **argv) {
 				// TODO this was a state to show a list of saved connections, not in use
 				// ncurses menu to show a list of connections to choose from
 				app_con = app_cons[0];
+				xlog_conn(app_con);
 
 				if (app_con->ssh_tunnel != NULL)
 					app_state = APP_STATE_FORK_SSH_TUNNEL;
@@ -1736,6 +1751,10 @@ int main(int argc, char **argv) {
 			case APP_STATE_DB_SELECT:
 				xlogf("APP_STATE_DB_SELECT\n");
 				// show menu to select db for the connection
+				if (con != NULL) {
+					xlog("CON STILL PRESENT BEFORE DB SELECT");
+					xlog(mysql_get_host_info(con));
+				}
 				run_db_select(con, app_con);
 
 				break;
@@ -1767,10 +1786,10 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_DISCONNECT %s@%s\n", app_con->user, app_con->host);
 
 				// close connection
+				selected_mysql_conn = NULL;
 				mysql_close(con);
 
 				conn_established = false;
-				selected_mysql_conn = NULL;
 				app_state = APP_STATE_END;
 				break;
 
@@ -1788,6 +1807,7 @@ int main(int argc, char **argv) {
 				// free connection memory
 				for (int i=0; i < CONNECTION_COUNT; i++) {
 					if (app_cons[i]->isset) {
+						xlogf("FREE CONN %d\n", i);
 						free_conn(app_cons[i]);
 					}
 					free(app_cons[i]);

@@ -15,7 +15,7 @@ run: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && ./bin/main.out $(ARGS)
 
 valgrind: $(BUILD) $(DEPS)
-	gcc -g -O0 $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && /usr/bin/valgrind --leak-check=full --show-leak-kinds=all --suppressions=valgrind.suppression ./bin/main.out $(ARGS)
+	gcc -g -O0 $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && /usr/bin/valgrind --leak-check=full --show-leak-kinds=all --log-file=logs/valgrind --suppressions=valgrind.suppression ./bin/main.out $(ARGS)
 
 valgrind-full: $(BUILD) $(DEPS)
 	gcc -g -O0 $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && /usr/bin/valgrind --leak-check=full --show-leak-kinds=all ./bin/main.out $(ARGS)

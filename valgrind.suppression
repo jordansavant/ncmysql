@@ -5,9 +5,27 @@
    obj:*/libncurses.so.*
 }
 {
-   ignore_libtinfo_memory_leads
+   ignore_ncmenu_memory_leaks
+   Memcheck:Leak
+   ...
+   obj:*/libmenu.so.*
+}
+{
+   ignore_libtinfo_memory_leaks
    Memcheck:Leak
    ...
    obj:*/libtinfo.so.*
+}
+{
+   ignore_openssl_memory_leaks
+   Memcheck:Leak
+   ...
+   obj:*/libcrypto.so.*
+}
+{
+   ignore_mysqlopensll_memory_leaks
+   Memcheck:Leak
+   ...
+   obj:*/libmysqlclient.so.*
 }
 
