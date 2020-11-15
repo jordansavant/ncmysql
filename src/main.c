@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <limits.h>
 #include "sqlops.h"
 #include "ui.h"
 #include "pass.h"
@@ -566,7 +567,6 @@ void display_error(const char *string) {
 bool con_selected = true;
 int con_select_index = 0;
 void on_con_select(char* label) {
-	// TODO set to connector
 	con_selected = true;
 }
 
@@ -1004,7 +1004,6 @@ void run_db_interact(MYSQL *con) {
 
 							int i=-1;
 							MYSQL_FIELD *f;
-							// TODO FIELD TITLES ON ROW TOP
 							mysql_field_seek(the_result, 0);
 							while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
@@ -1355,7 +1354,6 @@ void run_db_interact(MYSQL *con) {
 								default:
 									// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 									if (key > 31 && key < 127) { // ascii input
-										// TODO there is a bug, when i insert a character it pushes a space over the next line
 										int winy, winx;
 										getyx(query_window, winy, winx); // winx is position in line
 										int sizeleft = maxx - winx - 1;
@@ -1670,69 +1668,76 @@ int main(int argc, char **argv) {
 			case APP_STATE_LOAD_CONNECTION_FILE:
 				xlog("APP_STATE_LOAD_CONNECTION_FILE");
 
-				// TODO
-				// - was a path to a conf file provided?
-				// - if not is there a hidden local conf file?
-				// - if no file detected TODO build a create mode?
-				// - if file found, load connections into menu for selection
-				// - on selection, choose it as the app_con
-
 				FILE* fp = NULL;
 				if (arg_confile) {
 					fp = fopen(arg_confile, "r");
 				} else {
-					// TODO try to get local hidden conf file
-				}
-
-				if (fp) {
-					xlogf("reading file %s\n", arg_confile);
-					char line[1024];
-					int i = 0;
-					while (fgets(line, 1024, fp)) {
-						xlogf("read for conn %d\n", i);
-						//printf("%s %d \n", line, (int)strlen(line));
-
-						// the getfield uses strtok which fubars the data so i copy the line for as many fields, not ideal
-						// also we put in the heap so substrings found have stable addresses
-						char *tmp_for_name = strdup(line);
-						char *tmp_for_host = strdup(line);
-						char *tmp_for_port = strdup(line);
-						char *tmp_for_user = strdup(line);
-						char *tmp_for_pass = strdup(line);
-						char *tmp_for_tunnel = strdup(line);
-
-						const char *f_name = getfield(tmp_for_name, 1);
-						const char *f_host = getfield(tmp_for_host, 2);
-						const char *f_port = getfield(tmp_for_port, 3);
-						const char *f_user = getfield(tmp_for_user, 4);
-						const char *f_pass = getfield(tmp_for_pass, 5);
-						const char *f_tunnel = getfield(tmp_for_tunnel, 6);
-						//xlogf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
-
-						// TODO There are memory leaks coming from strdup
-						// even though we are running free on the app_conn property
-						app_con_count++;
-						app_cons[i]->isset = true;
-						app_cons[i]->name = strdup(f_name);
-						app_cons[i]->host = strdup(f_host);
-						app_cons[i]->port = strdup(f_port);
-						app_cons[i]->user = strdup(f_user);
-						app_cons[i]->pass = strdup(f_pass);
-						app_cons[i]->ssh_tunnel = strdup(f_tunnel);
-						app_cons[i]->iport = atoi(f_port);
-
-						free(tmp_for_pass);
-						free(tmp_for_name);
-						free(tmp_for_host);
-						free(tmp_for_port);
-						free(tmp_for_user);
-						free(tmp_for_tunnel);
-
-						i++;
+					// TODO try to get local untracked conf file
+					char cwd[PATH_MAX];
+					if (getcwd(cwd, sizeof(cwd)) == NULL) {
+						fprintf(stderr, "failed to get cwd\n");
+						return 1;
 					}
-
-					fclose(fp);
+					char *fname = "connections.csv";
+					int flen = strlen(cwd) + 1 + strlen(fname);
+					char fpath[flen];
+					sprintf(fpath, "%s/%s", cwd, fname);
+					fp = fopen(fpath, "r");
 				}
+
+				if (!fp) {
+					// TODO we could someday do a wizard to create the file here, or just do instructions on how to format csv
+					fprintf(stderr, "unable to locate connection file and no arguments presented\n");
+					return 1;
+				}
+
+				xlogf("reading file %s\n", arg_confile);
+				char line[1024];
+				int i = 0;
+				while (fgets(line, 1024, fp)) {
+					xlogf("read for conn %d\n", i);
+					//printf("%s %d \n", line, (int)strlen(line));
+
+					// the getfield uses strtok which fubars the data so i copy the line for as many fields, not ideal
+					// also we put in the heap so substrings found have stable addresses
+					char *tmp_for_name = strdup(line);
+					char *tmp_for_host = strdup(line);
+					char *tmp_for_port = strdup(line);
+					char *tmp_for_user = strdup(line);
+					char *tmp_for_pass = strdup(line);
+					char *tmp_for_tunnel = strdup(line);
+
+					const char *f_name = getfield(tmp_for_name, 1);
+					const char *f_host = getfield(tmp_for_host, 2);
+					const char *f_port = getfield(tmp_for_port, 3);
+					const char *f_user = getfield(tmp_for_user, 4);
+					const char *f_pass = getfield(tmp_for_pass, 5);
+					const char *f_tunnel = getfield(tmp_for_tunnel, 6);
+					//xlogf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+
+					// TODO There are memory leaks coming from strdup
+					// even though we are running free on the app_conn property
+					app_con_count++;
+					app_cons[i]->isset = true;
+					app_cons[i]->name = strdup(f_name);
+					app_cons[i]->host = strdup(f_host);
+					app_cons[i]->port = strdup(f_port);
+					app_cons[i]->user = strdup(f_user);
+					app_cons[i]->pass = strdup(f_pass);
+					app_cons[i]->ssh_tunnel = strdup(f_tunnel);
+					app_cons[i]->iport = atoi(f_port);
+
+					free(tmp_for_pass);
+					free(tmp_for_name);
+					free(tmp_for_host);
+					free(tmp_for_port);
+					free(tmp_for_user);
+					free(tmp_for_tunnel);
+
+					i++;
+				}
+
+				fclose(fp);
 
 				app_state = APP_STATE_CONNECTION_SELECT;
 
