@@ -92,7 +92,9 @@ void free_conn(struct Connection *conn) {
 }
 #define CONNECTION_COUNT 20
 //struct Connection **app_cons;
+struct Connection *app_con = NULL;
 struct Connection* app_cons[CONNECTION_COUNT];
+int app_con_count = 0;
 bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
@@ -560,6 +562,107 @@ void display_error(const char *string) {
 	} while (getch() != KEY_x);
 }
 
+
+bool con_selected = true;
+int con_select_index = 0;
+void on_con_select(char* label) {
+	// TODO set to connector
+	con_selected = true;
+}
+
+void run_con_select() {
+
+	con_selected = false;
+	refresh();
+
+	// determine widest connection name
+	int width = 0;
+	for (int i=0; i<app_con_count; i++) {
+		width = maxi(width, strlen(app_cons[i]->name) + 1 + strlen(app_cons[i]->host));
+	}
+
+	// allocate window for db menu
+	int frame_width = width + 5;// 7; // |_>_[label]_|
+	int frame_height = app_con_count + 2;
+	int offset_rows = 10;
+
+	WINDOW *con_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
+	wbkgd(con_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+	keypad(con_win, TRUE);
+
+	// allocate menu
+	MENU *my_menu;
+	ITEM **my_items = (ITEM **)calloc(app_con_count + 1, sizeof(ITEM *));
+
+	// iterate over dbs and add them to the menu as items
+	for (int i=0; i<app_con_count; i++) {
+		my_items[i] = new_item(app_cons[i]->name, app_cons[i]->host);
+		set_item_userptr(my_items[i], on_con_select);
+	}
+	my_items[app_con_count] = (ITEM*)NULL; // final element should be null
+	my_menu = new_menu((ITEM **)my_items);
+
+	// set menu styles and into parent
+	set_menu_fore(my_menu, COLOR_PAIR(COLOR_BLACK_CYAN));
+	set_menu_back(my_menu, COLOR_PAIR(COLOR_WHITE_BLUE));
+	set_menu_grey(my_menu, COLOR_PAIR(COLOR_YELLOW_RED));
+	set_menu_mark(my_menu, "");
+	set_menu_win(my_menu, con_win);
+	set_menu_sub(my_menu, derwin(con_win, frame_height - 2, frame_width - 4, 1, 2)); // (h, w, offy, offx) from parent window
+
+	// post menu to render and draw it first
+	post_menu(my_menu);
+	wrefresh(con_win);
+
+	// reposition the menu from last selection
+	for (int j=0; j < con_select_index; j++) {
+		menu_driver(my_menu, REQ_DOWN_ITEM);
+	}
+	wrefresh(con_win);
+
+	// listen for input for the window selection
+	bool done = false;
+	while(!done) {
+		int c = getch();
+		switch(c) {
+			case KEY_DOWN:
+				menu_driver(my_menu, REQ_DOWN_ITEM);
+				con_select_index = clampi(con_select_index + 1, 0, app_con_count - 1);
+				break;
+			case KEY_UP:
+				menu_driver(my_menu, REQ_UP_ITEM);
+				con_select_index = clampi(con_select_index - 1, 0, app_con_count - 1);
+				break;
+			case KEY_RETURN: {
+				   void (*callback)(char *);
+				   ITEM *cur_item = current_item(my_menu);
+				   callback = item_userptr(cur_item);
+				   callback((char *)item_name(cur_item));
+				   pos_menu_cursor(my_menu);
+				   if (con_selected) {
+				       done = true;
+					   app_con = app_cons[con_select_index]; // selct the connection
+				       break;
+				   }
+			   }
+			   break;
+			case KEY_x:
+			   done = true;
+			   break;
+		}
+		wrefresh(con_win);
+	}
+	// with DB selected free menu memory
+	unpost_menu(my_menu);
+	for(int i = 0; i < app_con_count; i++) {
+		free_item(my_items[i]); // new_item is only called on 0 thru num_rows
+	}
+	free_menu(my_menu);
+	free(my_items);
+	delwin(con_win);
+
+	clear();
+}
 
 
 
@@ -1474,7 +1577,6 @@ int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
 
-	struct Connection *app_con = NULL;
 	MYSQL *con = NULL;
 
 	xlogopen("logs/log", "w+");
@@ -1528,7 +1630,9 @@ int main(int argc, char **argv) {
 				// strdups are used to copy global argv values into heap
 				// so we can free the connection the same way for cmd line arg strings
 				// and file strings from the connection file
+				app_con_count++;
 				app_cons[0]->isset = true;
+				app_cons[0]->name = strdup("command args");
 				app_cons[0]->host = strdup(arg_host);
 				app_cons[0]->user = strdup(arg_user);
 
@@ -1607,6 +1711,7 @@ int main(int argc, char **argv) {
 
 						// TODO There are memory leaks coming from strdup
 						// even though we are running free on the app_conn property
+						app_con_count++;
 						app_cons[i]->isset = true;
 						app_cons[i]->name = strdup(f_name);
 						app_cons[i]->host = strdup(f_host);
@@ -1638,21 +1743,27 @@ int main(int argc, char **argv) {
 
 				app_setup(); // setup ncurses control
 
-				// lets see what we have allocated
-				for (int i=0; i < CONNECTION_COUNT; i++) {
-					if (app_cons[i]->isset) {
-						//xlogf("CON %d ISSET\n", i);
-						//xlog_conn(app_cons[i]);
-					} else {
-						//xlogf("CON %d NOTSET\n", i);
-					}
+				// if only one connection then use it
+				// otherwise create a menu to display them
+				if (app_con_count == 0) {
+					display_error("No connections defined");
+					app_state = APP_STATE_END;
+					break;
 				}
 
-				// TODO this was a state to show a list of saved connections, not in use
-				// ncurses menu to show a list of connections to choose from
-				app_con = app_cons[0];
-				xlog_conn(app_con);
+				if (app_con_count == 1) {
+					app_con = app_cons[0];
+				} else {
+					run_con_select();
+				}
 
+				if (!app_con) {
+					// we exited the connection without a selection
+					app_state = APP_STATE_END;
+					break;
+				}
+
+				// once one has been established run the connect
 				if (app_con->ssh_tunnel != NULL)
 					app_state = APP_STATE_FORK_SSH_TUNNEL;
 				else
@@ -1791,6 +1902,7 @@ int main(int argc, char **argv) {
 
 				conn_established = false;
 				app_state = APP_STATE_END;
+				app_con = NULL;
 				break;
 
 			case APP_STATE_END:
