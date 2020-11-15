@@ -694,7 +694,6 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			// Get DBs
 			int num_fields, num_rows;
 			MYSQL_RES *result = con_select(con, &num_fields, &num_rows);
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// determine widest db name
 			int dblen = 0;
@@ -703,33 +702,27 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 				int d = (int)strlen(row1[0]);
 				dblen = maxi(d, dblen);
 			}
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// allocate window for db menu
 			int frame_width = dblen + 5;// 7; // |_>_[label]_|
 			int frame_height = num_rows + 2;
 			int offset_rows = 10;
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 			wbkgd(db_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 			keypad(db_win, TRUE);
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// allocate menu
 			MENU *my_menu;
 			ITEM **my_items = (ITEM **)calloc(num_rows + 1, sizeof(ITEM *));
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			// iterate over dbs and add them to the menu as items
 			int i=0;
 			MYSQL_ROW row2;
 			mysql_data_seek(result, 0);
 			while (row2 = mysql_fetch_row(result)) {
-				xlogf("table: %s\n", row2[0]);
 				my_items[i] = new_item(row2[0], "");
 				set_item_userptr(my_items[i], on_db_select);
 				i++;
 			}
 
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			my_items[num_rows] = (ITEM*)NULL; // final element should be null
 			my_menu = new_menu((ITEM **)my_items);
 
@@ -740,24 +733,18 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			set_menu_mark(my_menu, "");
 			set_menu_win(my_menu, db_win);
 			set_menu_sub(my_menu, derwin(db_win, frame_height - 2, frame_width - 4, 1, 2)); // (h, w, offy, offx) from parent window
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// post menu to render and draw it first
 			post_menu(my_menu);
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			wrefresh(db_win);
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// reposition the menu from last selection
 			for (int j=0; j < menu_select_pos; j++) {
 				menu_driver(my_menu, REQ_DOWN_ITEM);
 			}
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			wrefresh(db_win);
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 
 			// listen for input for the window selection
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			bool done = false;
 			while(!done) {
 				int c = getch();
@@ -803,7 +790,6 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			mysql_free_result(result); // free sql memory
 
 			clear();
-			xlogf("%s %d\n", __FUNCTION__, __LINE__);
 			break;
 		}
 
@@ -1511,15 +1497,34 @@ void run_db_interact(MYSQL *con) {
 
 // TODO LIST
 // - text editor needs a lot of quol work
-// - connection list, file and menu
 // - cell editor
-// - usage message
+// - usage message, error functions etc
 // - dynamic pad size for result set, right now its fixed
 // - build on os x
+// - deal with fubard CSV values
+
+char *program_name;
+void cli_usage(FILE* f) {
+	fprintf(f, "Usage:\n");
+	fprintf(f, "  %s -h mysql-host [-l port] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
+	fprintf(f, "  %s -f connection-file\n", program_name);
+}
+
+void cli_error(char *err) {
+	char *red = "\033[0;31m";
+	char *green = "\033[0;32m";
+	char *blue = "\033[0;34m";
+	char *def = "\033[0m";
+	if (err && strlen(err)) {
+		fprintf(stderr, "%sError:\n  %s: %s %s\n", red, program_name, err, def);
+	}
+	cli_usage(stderr);
+	exit(1);
+}
 
 /*
  * USAGE
- * ./a.out -h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost] [-f connectfile]
+ * ./a.out (-h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost], [-f connectfile])
  */
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
@@ -1538,26 +1543,27 @@ int parseargs(int argc, char **argv) {
 			case 'f': arg_confile = optarg; break;
 			case '?': // appears if unknown option when opterr=0
 				if (optopt == 'h')
-					fprintf(stderr, "Error: -h missing hostname\n");
+					cli_error("-h missing mysql-host");
 				else if (optopt == 'l')
-					fprintf(stderr, "Error: -l missing port\n");
+					cli_error("-l missing port");
 				else if (optopt == 'u')
-					fprintf(stderr, "Error: -u missing user\n");
+					cli_error("-u missing mysql-user");
 				else if (optopt == 'p')
-					fprintf(stderr, "Error: -p missing password\n");
+					cli_error("-p missing mysql-pass");
 				else if (optopt == 's')
-					fprintf(stderr, "Error: -s missing ssh tunnel string\n");
-				else if (isprint(optopt))
-					fprintf(stderr, "Error: unknown option '-%c'\n", optopt);
-				else
-					fprintf(stderr, "Error: unknown option ['\\x%x']\n", optopt);
+					cli_error("-s missing ssh-tunnel-host");
+				else if (isprint(optopt)) {
+					char b[256]; strclr(b, 256);
+					sprintf(b, "unknown option '-%c'", optopt);
+					cli_error(b);
+				} else
+					cli_error("unknown option");
 				return 1;
 			default:
-				fprintf(stderr, "Error: unknown getopt error");
+				cli_error("unknown getopt error");
 				return 1;
 		}
 	}
-	// TODO print usage on error
 	return 0;
 }
 
@@ -1574,20 +1580,18 @@ char *scan_pass = NULL;
 int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
-
 	MYSQL *con = NULL;
 
 	xlogopen("logs/log", "w+");
-
 	xlog("....... START .......");
 	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
 	// parse our arguments into data
+	program_name = argv[0];
 	if (parseargs(argc, argv)) {
 		return 1;
 	}
 	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
-
 
 	bool run = true;
 	while (run) {
@@ -1613,17 +1617,10 @@ int main(int argc, char **argv) {
 			case APP_STATE_ARGS_TO_CONNECTION:
 				xlog("APP_STATE_ARGS_TO_CONNECTION");
 
-				bool invalid = false;
-				if (arg_host == NULL) {
-					fprintf(stderr, "Error: hostname is required\n");
-					invalid = true;
-				}
-				if (arg_user == NULL) {
-					fprintf(stderr, "Error: user is required\n");
-					invalid = true;
-				}
-				if (invalid)
-					return 1;
+				if (arg_host == NULL)
+					cli_error("mysql-host is required");
+				if (arg_user == NULL)
+					cli_error("mysql-user is required");
 
 				// strdups are used to copy global argv values into heap
 				// so we can free the connection the same way for cmd line arg strings
@@ -1675,7 +1672,7 @@ int main(int argc, char **argv) {
 					// TODO try to get local untracked conf file
 					char cwd[PATH_MAX];
 					if (getcwd(cwd, sizeof(cwd)) == NULL) {
-						fprintf(stderr, "failed to get cwd\n");
+						cli_error("failed to get cwd");
 						return 1;
 					}
 					char *fname = "connections.csv";
@@ -1687,8 +1684,7 @@ int main(int argc, char **argv) {
 
 				if (!fp) {
 					// TODO we could someday do a wizard to create the file here, or just do instructions on how to format csv
-					fprintf(stderr, "unable to locate connection file and no arguments presented\n");
-					return 1;
+					cli_error("unable to locate connection file and no connection arguments provided");
 				}
 
 				xlogf("reading file %s\n", arg_confile);
@@ -1696,7 +1692,6 @@ int main(int argc, char **argv) {
 				int i = 0;
 				while (fgets(line, 1024, fp)) {
 					xlogf("read for conn %d\n", i);
-					//printf("%s %d \n", line, (int)strlen(line));
 
 					// the getfield uses strtok which fubars the data so i copy the line for as many fields, not ideal
 					// also we put in the heap so substrings found have stable addresses
@@ -1924,7 +1919,6 @@ int main(int argc, char **argv) {
 				// free connection memory
 				for (int i=0; i < CONNECTION_COUNT; i++) {
 					if (app_cons[i]->isset) {
-						xlogf("FREE CONN %d\n", i);
 						free_conn(app_cons[i]);
 					}
 					free(app_cons[i]);
