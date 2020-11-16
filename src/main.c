@@ -107,6 +107,7 @@ MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
 bool result_rerender = true;
 int result_shift_r=0, result_shift_c=0;
+int focus_cell_r = 0, focus_cell_c = 0;
 
 // STATE MACHINES
 //
@@ -181,6 +182,11 @@ MYSQL_RES* tbl_result = NULL;
 //
 int maxi(int a, int b) {
 	if (a > b)
+		return a;
+	return b;
+}
+int mini(int a, int b) {
+	if (a < b)
 		return a;
 	return b;
 }
@@ -808,7 +814,8 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 	}
 }
 
-// DB PANELS
+
+
 
 void set_query(char *query) {
 	strclr(the_query, QUERY_MAX);
@@ -834,6 +841,8 @@ void execute_query() {
 	result_rerender = true;
 	result_shift_r = 0;
 	result_shift_c = 0;
+	focus_cell_r = 0;
+	focus_cell_c = 0;
 }
 
 void clear_query() {
@@ -848,8 +857,9 @@ void clear_query() {
 	result_rerender = true;
 	result_shift_r = 0;
 	result_shift_c = 0;
+	focus_cell_r = 0;
+	focus_cell_c = 0;
 }
-
 
 void run_db_interact(MYSQL *con) {
 
@@ -964,12 +974,15 @@ void run_db_interact(MYSQL *con) {
 				if (the_result) {
 
 					int result_row = 0;
+					int result_field = 0;
 
 					// print header
-					wmove(result_pad, result_row++, 0);
+					wmove(result_pad, result_row, 0);
 					MYSQL_FIELD *fh;
 					mysql_field_seek(the_result, 0);
 					while ((fh = mysql_fetch_field(the_result))) {
+						xlogf("fc %d/%d %d/%d\n", result_row, focus_cell_r, result_field, focus_cell_c);
+
 						unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
 						if (max_field_length > 32)
 							max_field_length = 32;
@@ -977,9 +990,18 @@ void run_db_interact(MYSQL *con) {
 						char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
 						strclr(buffer, imaxf + 1);
 						snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
-						int attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
-						if (interact_state == INTERACT_STATE_RESULTS)
-							attrs |= A_BOLD;
+
+						// cell coloring
+						int attrs;
+						if (interact_state == INTERACT_STATE_RESULTS) {
+							if (focus_cell_r == result_row && focus_cell_c == result_field) {
+								attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+							} else {
+								attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD;
+							}
+						} else {
+							attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
+						}
 						wattrset(result_pad, attrs);
 						waddstr(result_pad, buffer);
 
@@ -990,7 +1012,11 @@ void run_db_interact(MYSQL *con) {
 						waddch(result_pad, ' ');
 						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 						waddch(result_pad, ' ');
+
+						result_field++;
 					}
+					result_field = 0;
+					result_row++;
 
 					if (the_num_rows == 0) {
 						// print empty if no rows
@@ -1002,7 +1028,7 @@ void run_db_interact(MYSQL *con) {
 						MYSQL_ROW row;
 						mysql_data_seek(the_result, 0);
 						while ((row = mysql_fetch_row(the_result))) {
-							wmove(result_pad, result_row++, 0);
+							wmove(result_pad, result_row, 0);
 
 							int i=-1;
 							MYSQL_FIELD *f;
@@ -1015,7 +1041,9 @@ void run_db_interact(MYSQL *con) {
 
 								// determine cell style
 								int attrs;
-								if (isnull) {
+								if (focus_cell_r == result_row && focus_cell_c == result_field) {
+									attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+								} else if (isnull) {
 									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
 								} else if (isempty) {
 									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
@@ -1090,7 +1118,12 @@ void run_db_interact(MYSQL *con) {
 								waddch(result_pad, ' ');
 								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 								waddch(result_pad, ' ');
+
+								result_field++;
 							}
+
+							result_row++;
+							result_field = 0;
 						} // eo while row
 					} // eo if rows
 				} // eo if results
@@ -1460,19 +1493,35 @@ void run_db_interact(MYSQL *con) {
 							result_rerender = true;
 							break;
 						case KEY_UP:
-							result_shift_r--;
-							result_shift_r = maxi(0, result_shift_r);
+							focus_cell_r = maxi(0, focus_cell_r - 1);
+							result_rerender = true;
 							break;
 						case KEY_DOWN:
-							result_shift_r++;
+							focus_cell_r = mini(the_num_rows, focus_cell_r + 1);
+							result_rerender = true;
 							break;
 						case KEY_LEFT:
-							result_shift_c -= 2;
-							result_shift_c = maxi(0, result_shift_c);
+							focus_cell_c = maxi(0, focus_cell_c - 1);
+							result_rerender = true;
 							break;
 						case KEY_RIGHT:
-							result_shift_c += 2;
+							focus_cell_c = mini(the_num_fields - 1, focus_cell_c + 1);
+							result_rerender = true;
 							break;
+						//case KEY_UP:
+						//	result_shift_r--;
+						//	result_shift_r = maxi(0, result_shift_r);
+						//	break;
+						//case KEY_DOWN:
+						//	result_shift_r++;
+						//	break;
+						//case KEY_LEFT:
+						//	result_shift_c -= 2;
+						//	result_shift_c = maxi(0, result_shift_c);
+						//	break;
+						//case KEY_RIGHT:
+						//	result_shift_c += 2;
+						//	break;
 						case KEY_PPAGE: // pageup
 							result_shift_r -= 20;
 							result_shift_r = maxi(0, result_shift_r);
