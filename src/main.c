@@ -107,7 +107,7 @@ MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
 bool result_rerender = true;
 int result_shift_r=0, result_shift_c=0;
-int focus_cell_r = 0, focus_cell_c = 0;
+int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
 
 // STATE MACHINES
 //
@@ -843,6 +843,9 @@ void execute_query() {
 	result_shift_c = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
+	focus_cell_c_width = 0;
+	focus_cell_c_pos = 0;
+	focus_cell_r_pos = 0;
 }
 
 void clear_query() {
@@ -859,6 +862,9 @@ void clear_query() {
 	result_shift_c = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
+	focus_cell_c_width = 0;
+	focus_cell_c_pos = 0;
+	focus_cell_r_pos = 0;
 }
 
 void run_db_interact(MYSQL *con) {
@@ -981,7 +987,9 @@ void run_db_interact(MYSQL *con) {
 					MYSQL_FIELD *fh;
 					mysql_field_seek(the_result, 0);
 					while ((fh = mysql_fetch_field(the_result))) {
-						xlogf("fc %d/%d %d/%d\n", result_row, focus_cell_r, result_field, focus_cell_c);
+
+						int cury,curx;
+						getyx(result_pad, cury, curx);
 
 						unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
 						if (max_field_length > 32)
@@ -996,6 +1004,9 @@ void run_db_interact(MYSQL *con) {
 						if (interact_state == INTERACT_STATE_RESULTS) {
 							if (focus_cell_r == result_row && focus_cell_c == result_field) {
 								attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+								focus_cell_c_width = imaxf;
+								focus_cell_c_pos = curx;
+								focus_cell_r_pos = result_row;
 							} else {
 								attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD;
 							}
@@ -1035,14 +1046,31 @@ void run_db_interact(MYSQL *con) {
 							mysql_field_seek(the_result, 0);
 							while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
 
+								int cury,curx;
+								getyx(result_pad, cury, curx);
+
 								unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
+								// print into the cell
+								if (max_field_length > 32)
+									max_field_length = 32;
+								int imaxf;
 								bool isnull = !row[i];
 								bool isempty = !isnull && strlen(row[i]) == 0;
+								if (isnull)
+									imaxf = maxi(max_field_length, 4); // "NULL"
+								else if (isempty)
+									imaxf = maxi(max_field_length, 5); // "EMPTY"
+								else
+									imaxf = (int)max_field_length; // plus 3 for padding
+								//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
 
 								// determine cell style
 								int attrs;
 								if (focus_cell_r == result_row && focus_cell_c == result_field) {
 									attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+									focus_cell_c_width = imaxf;
+									focus_cell_c_pos = curx;
+									focus_cell_r_pos = result_row;
 								} else if (isnull) {
 									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
 								} else if (isempty) {
@@ -1077,18 +1105,6 @@ void run_db_interact(MYSQL *con) {
 								//	attrs |= A_BOLD;
 								wattrset(result_pad, attrs);
 
-								// print into the cell
-								if (max_field_length > 32)
-									max_field_length = 32;
-
-								int imaxf;
-								if (isnull)
-									imaxf = maxi(max_field_length, 4); // "NULL"
-								else if (isempty)
-									imaxf = maxi(max_field_length, 5); // "EMPTY"
-								else
-									imaxf = (int)max_field_length; // plus 3 for padding
-								//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
 
 								// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
 								// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
@@ -1180,8 +1196,21 @@ void run_db_interact(MYSQL *con) {
 			getmaxyx(stdscr, sy, sx);
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
 
-			int rp_shift_r = result_shift_r;
-			int rp_shift_c = result_shift_c;
+			// NEW spacing
+			// get focus cell x + focus_cell width
+			// if wider than tbl_render_w then shift pad the difference
+			int rp_width = sx - tbl_render_w - 3; // gutter + len/index swap
+			int rp_height = sy - QUERY_WIN_H - 1 - 2 - 1 - 1; // gutter - bars - len/index swap - 1 for spacing below
+			int rp_shift_c = 0;
+			int x_overhang_amt = (focus_cell_c_pos + focus_cell_c_width + 3) - rp_width; // plus 3 for spacing + vert bar divider
+			if (x_overhang_amt > 0)
+				rp_shift_c = x_overhang_amt;
+			int rp_shift_r = 0;
+			int y_overhang_amt = focus_cell_r_pos - rp_height;
+			if (y_overhang_amt > 0)
+				rp_shift_r = y_overhang_amt;
+			//int rp_shift_r = result_shift_r;
+			//int rp_shift_c = result_shift_c;
 			int rp_y = QUERY_WIN_H + 1;
 			int rp_x = tbl_render_w + 1 + 2 + 1;
 			prefresh(result_pad, rp_shift_r,rp_shift_c, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
