@@ -46,7 +46,7 @@ MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 }
 
 MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode) {
-	if (*errcode = mysql_query(con, query)) {
+	if ((*errcode = mysql_query(con, query))) {
 		*num_fields = 0;
 		*num_rows = 0;
 		*num_affect_rows = 0;
@@ -54,7 +54,7 @@ MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int
 	}
 
 	MYSQL_RES *result = mysql_store_result(con);
-	if (*errcode = mysql_errno(con)) {
+	if ((*errcode = mysql_errno(con))) {
 		*num_fields = 0;
 		*num_rows = 0;
 		*num_affect_rows = 0;
@@ -85,7 +85,7 @@ int col_size(MYSQL_RES* result, int index) {
     MYSQL_ROW row;
     mysql_data_seek(result, 0);
     int len = 0;
-    while (row = mysql_fetch_row(result)) {
+    while ((row = mysql_fetch_row(result))) {
         int d = (int)strlen(row[index]);
         len = _maxi(d, len);
     }

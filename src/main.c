@@ -116,7 +116,7 @@ enum APP_STATE {
 	APP_STATE_LOAD_CONNECTION_FILE,
 	APP_STATE_CONNECTION_SELECT,
 	APP_STATE_FORK_SSH_TUNNEL,
-	APP_STATE_CONNECTION_CREATE,
+	//APP_STATE_CONNECTION_CREATE,
 	APP_STATE_CONNECT,
 	APP_STATE_DB_SELECT,
 	APP_STATE_DB_SELECT_END,
@@ -698,7 +698,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			// determine widest db name
 			int dblen = 0;
 			MYSQL_ROW row1;
-			while (row1 = mysql_fetch_row(result)) {
+			while ((row1 = mysql_fetch_row(result))) {
 				int d = (int)strlen(row1[0]);
 				dblen = maxi(d, dblen);
 			}
@@ -717,7 +717,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			int i=0;
 			MYSQL_ROW row2;
 			mysql_data_seek(result, 0);
-			while (row2 = mysql_fetch_row(result)) {
+			while ((row2 = mysql_fetch_row(result))) {
 				my_items[i] = new_item(row2[0], "");
 				set_item_userptr(my_items[i], on_db_select);
 				i++;
@@ -900,7 +900,7 @@ void run_db_interact(MYSQL *con) {
 			int r = 0; int c = 0; int i = 0;
 			wbkgd(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 			mysql_data_seek(tbl_result, 0);
-			while (row = mysql_fetch_row(tbl_result)) {
+			while ((row = mysql_fetch_row(tbl_result))) {
 				wmove(tbl_pad, r, c);
 				// highlight focused table
 				if (i == tbl_index) {
@@ -953,7 +953,7 @@ void run_db_interact(MYSQL *con) {
 					wmove(result_pad, result_row++, 0);
 					MYSQL_FIELD *fh;
 					mysql_field_seek(the_result, 0);
-					while (fh = mysql_fetch_field(the_result)) {
+					while ((fh = mysql_fetch_field(the_result))) {
 						unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
 						if (max_field_length > 32)
 							max_field_length = 32;

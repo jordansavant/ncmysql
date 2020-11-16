@@ -11,6 +11,9 @@ DEPS = src/ui.h src/pass.h src/sqlops.h
 make: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS)
 
+osx: $(BUILD) $(DEPS)
+	gcc -I/usr/local/opt/ncurses/include -L/usr/local/opt/ncurses/lib $(BUILD) -o bin/main.out $(LIBS) && ./bin/main.out $(ARGS)
+
 run: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && ./bin/main.out $(ARGS)
 
