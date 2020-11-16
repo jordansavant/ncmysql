@@ -50,10 +50,26 @@ void ui_clear_win(WINDOW *win)
 	wrefresh(win);
 }
 
+
 void ui_clear_row(WINDOW *win, int row)
 {
 	wmove(win, row + 1, 0);
 	wclrtoeol(win);
+}
+
+void _strfill(char *string, int size, char c) {
+	for (int i = 0; i < size - 1; i++) {
+		string[i] = c;
+	}
+}
+void ui_color_row(WINDOW *win, int colorpair)
+{
+	int y,x;
+	getmaxyx(win, y, x);
+	wattrset(win, colorpair);
+	char buffer[x - 1];
+	_strfill(buffer, x - 1, ' ');
+	waddstr(win, buffer);
 }
 
 void ui_box_color(WINDOW* win, int colorpair)

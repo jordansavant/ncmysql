@@ -26,6 +26,7 @@ WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols);
 void ui_center_win(WINDOW* win, int offset_row, int offset_col, int rows, int cols);
 void ui_clear_win(WINDOW *win);
 void ui_clear_row(WINDOW *win, int row);
+void ui_color_row(WINDOW *win, int colorpair);
 void ui_box_color(WINDOW* win, int colorpair);
 void ui_box(WINDOW* win);
 void ui_anchor_ur(WINDOW* win, int rows, int cols);

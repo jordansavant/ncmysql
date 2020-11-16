@@ -233,6 +233,12 @@ int charreplace(char *str, char orig, char rep) {
 	return n;
 }
 
+void strfill(char *string, int size, char c) {
+	for (int i = 0; i < size - 1; i++) {
+		string[i] = c;
+	}
+}
+
 void strclr(char *string, int size) {
 	for (int i = 0; i < size; i++) {
 		string[i] = '\0';
@@ -588,6 +594,7 @@ void run_con_select() {
 
 	WINDOW *con_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 	wbkgd(con_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+	ui_clear_win(con_win);
 	keypad(con_win, TRUE);
 
 	// allocate menu
@@ -709,6 +716,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 			wbkgd(db_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+			ui_clear_win(db_win);
 			keypad(db_win, TRUE);
 			// allocate menu
 			MENU *my_menu;
@@ -897,25 +905,34 @@ void run_db_interact(MYSQL *con) {
 			////////////////////////////////////////////////
 			// PRINT THE TABLES
 			MYSQL_ROW row;
-			int r = 0; int c = 0; int i = 0;
-			wbkgd(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+			int r = 0, c = 0;
+			//wbkgdset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE)); // on OSX this does not play well with wattrset for background colors
+			ui_clear_win(tbl_pad);
 			mysql_data_seek(tbl_result, 0);
 			while ((row = mysql_fetch_row(tbl_result))) {
 				wmove(tbl_pad, r, c);
 				// highlight focused table
-				if (i == tbl_index) {
-					if (interact_state == INTERACT_STATE_TABLE_LIST)
+				if (r == tbl_index) {
+					if (interact_state == INTERACT_STATE_TABLE_LIST){
 						wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
-					else
+					}else{
 						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
+					}
 				} else {
-					wattrset(tbl_pad, COLOR_PAIR(0));
+					wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 				}
 				// print table name with padding for focused background coloring
 				char buffer[tbl_pad_w];
 				sprintf(buffer, TBL_STR_FMT, row[0]);
 				waddstr(tbl_pad, buffer);
-				r++; i++;
+				r++;
+			}
+			// wbkgdset does not play well with wattrset backgrounds on top of them on OS X
+			// so I am filling backgrounds manually when I need them
+			while (r < TBL_PAD_H) {
+				wmove(tbl_pad, r, c);
+				ui_color_row(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+				r++;
 			}
 
 			// draw the pad, position within pad, to position within screen
@@ -929,11 +946,10 @@ void run_db_interact(MYSQL *con) {
 			//////////////////////////////////////////////
 			// PRINT THE QUERY PANEL
 			ui_clear_win(query_window);
-			if (interact_state == INTERACT_STATE_QUERY) {
-				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
-			} else {
-				wbkgd(query_window, COLOR_PAIR(COLOR_WHITE_BLACK));
-			}
+			if (interact_state == INTERACT_STATE_QUERY)
+				wattrset(query_window, COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD);
+			else
+				wattrset(query_window, COLOR_PAIR(COLOR_WHITE_BLACK));
 			wmove(query_window, 0, 0);
 			waddstr(query_window, the_query);
 			wrefresh(query_window);
@@ -943,8 +959,8 @@ void run_db_interact(MYSQL *con) {
 			if (result_rerender) {
 				xlog("  - RERENDER");
 				result_rerender = false;
+				//wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 				ui_clear_win(result_pad);
-				wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 				if (the_result) {
 
 					int result_row = 0;
