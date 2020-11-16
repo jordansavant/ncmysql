@@ -584,7 +584,7 @@ void run_con_select() {
 	// determine widest connection name
 	int width = 0;
 	for (int i=0; i<app_con_count; i++) {
-		width = maxi(width, strlen(app_cons[i]->name) + 1 + strlen(app_cons[i]->host));
+		width = maxi(width, strlen(app_cons[i]->name));
 	}
 
 	// allocate window for db menu
@@ -603,7 +603,7 @@ void run_con_select() {
 
 	// iterate over dbs and add them to the menu as items
 	for (int i=0; i<app_con_count; i++) {
-		my_items[i] = new_item(app_cons[i]->name, app_cons[i]->host);
+		my_items[i] = new_item(app_cons[i]->name, NULL);
 		set_item_userptr(my_items[i], on_con_select);
 	}
 	my_items[app_con_count] = (ITEM*)NULL; // final element should be null
