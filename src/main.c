@@ -5,10 +5,11 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
-#include <ctype.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <limits.h>
+
+#include "jlib.h"
 #include "sqlops.h"
 #include "ui.h"
 #include "pass.h"
@@ -179,7 +180,6 @@ MYSQL_RES* tbl_result = NULL;
 
 
 // FUNCTIONS
-//
 int maxi(int a, int b) {
 	if (a > b)
 		return a;
@@ -229,58 +229,6 @@ void xlog_conn(struct Connection *con) {
 	 );
 }
 
-int charreplace(char *str, char orig, char rep) {
-	char *ix = str;
-	int n = 0;
-	while((ix = strchr(ix, orig)) != NULL) {
-		*ix++ = rep;
-		n++;
-	}
-	return n;
-}
-
-void strfill(char *string, int size, char c) {
-	for (int i = 0; i < size - 1; i++) {
-		string[i] = c;
-	}
-}
-
-void strclr(char *string, int size) {
-	for (int i = 0; i < size; i++) {
-		string[i] = '\0';
-	}
-}
-
-size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
-	if(len == 0)
-		return 0;
-
-	const char *end;
-	size_t out_size;
-
-	// Trim leading space
-	while(isspace((unsigned char)*str)) str++;
-
-	if(*str == 0)  // All spaces?
-	{
-		*out = 0;
-		return 1;
-	}
-
-	// Trim trailing space
-	end = str + strlen(str) - 1;
-	while(end > str && isspace((unsigned char)*end)) end--;
-	end++;
-
-	// Set output size to minimum of trimmed string length and buffer size minus 1
-	out_size = (end - str) < len-1 ? (end - str) : len-1;
-
-	// Copy trimmed string and add null terminator
-	memcpy(out, str, out_size);
-	out[out_size] = 0;
-
-	return out_size;
-}
 
 int nc_strtrimlen(chtype *buff, int size) {
 	int ccount = 0;
@@ -493,7 +441,7 @@ void app_setup() {
 
 	app_ui_layout();
 
-	strclr(the_query, QUERY_MAX);
+	j_strclr(the_query, QUERY_MAX);
 
 	// listen to os signal
 	signal(SIGWINCH, on_term_resize);
@@ -818,12 +766,12 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 
 
 void set_query(char *query) {
-	strclr(the_query, QUERY_MAX);
+	j_strclr(the_query, QUERY_MAX);
 	strcpy(the_query, query);
 }
 
 void set_queryf(char *format, ...) {
-	strclr(the_query, QUERY_MAX);
+	j_strclr(the_query, QUERY_MAX);
 
 	va_list argptr;
 	va_start(argptr, format);
@@ -856,7 +804,7 @@ void clear_query() {
 		mysql_free_result(the_result); // free sql memory
 		the_result = NULL;
 	}
-	strclr(the_query, QUERY_MAX);
+	j_strclr(the_query, QUERY_MAX);
 	result_rerender_full = true;
 	result_rerender_focus = false;
 	last_focus_cell_r = 0;
@@ -901,7 +849,7 @@ void text_editor(WINDOW *window, char *buffer, int buffer_len) {
 				// capture and trim the contents of the window
 				// convert to character buffer for the line
 				chtype chtype_buffers[maxy][maxx];
-				strclr(buffer, buffer_len);
+				j_strclr(buffer, buffer_len);
 				int buffi = 0;
 				for (int r=0; r < maxy; r++) {
 					wmove(window, r, 0);
@@ -1061,7 +1009,7 @@ void render_result_header(int *render_row) {
 			max_field_length = 32;
 		int imaxf = (int)max_field_length;
 		char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-		strclr(buffer, imaxf + 1);
+		j_strclr(buffer, imaxf + 1);
 		snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
 
 		// cell coloring
@@ -1177,7 +1125,7 @@ void render_result_row(int row_index, int *render_row) {
 			// after a random null character because im not that concerned about rendering out contents of BLOBs with that
 			// shitty data in it
 			char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-			strclr(buffer, imaxf + 1);
+			j_strclr(buffer, imaxf + 1);
 			if (isnull) {
 				// NULL
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
@@ -1186,9 +1134,9 @@ void render_result_row(int row_index, int *render_row) {
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
 			} else {
 				// CONTENTS
-				charreplace(row[i], '\t', ' ');
-				charreplace(row[i], '\n', ' ');
-				charreplace(row[i], '\r', ' ');
+				j_strchrplc(row[i], '\t', ' ');
+				j_strchrplc(row[i], '\n', ' ');
+				j_strchrplc(row[i], '\r', ' ');
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
 			}
 			waddstr(result_pad, buffer);
@@ -1361,7 +1309,7 @@ void run_db_interact(MYSQL *con) {
 				else if (!the_result && the_aff_rows) {
 					// no results but a query did affect some rows so print the info for that
 					char buffer[64];
-					strclr(buffer, 64);
+					j_strclr(buffer, 64);
 					sprintf(buffer, "%d %s", the_aff_rows, "affected row(s)");
 
 					wmove(result_pad, 0, 0);
@@ -1635,11 +1583,12 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
-// - build on os x
-// - text editor needs a lot of quol work
+// - text editor needs qol work
+// - result nav pg up/dn on macos are different
+// - query editor delete key is different on macos
 // - cell editor, col sorter
 // - dynamic pad size for result set, right now its fixed
-// - deal with fubard CSV values in connection file (strtok splodes)
+// - deal with fubard CSV values in connection file (strtok splodes) (optional tunnel etc)
 
 char *program_name;
 void cli_usage(FILE* f) {
@@ -1691,7 +1640,7 @@ int parseargs(int argc, char **argv) {
 				else if (optopt == 's')
 					cli_error("-s missing ssh-tunnel-host");
 				else if (isprint(optopt)) {
-					char b[256]; strclr(b, 256);
+					char b[256]; j_strclr(b, 256);
 					sprintf(b, "unknown option '-%c'", optopt);
 					cli_error(b);
 				} else
@@ -1772,7 +1721,7 @@ int main(int argc, char **argv) {
 				if (arg_pass == NULL) {
 					// ask for password
 					scan_pass = (char*)malloc(256);
-					strclr(scan_pass, 256);
+					j_strclr(scan_pass, 256);
 					int nchr = 0;
 					while (nchr == 0) {
 						printf("Enter password: ");
