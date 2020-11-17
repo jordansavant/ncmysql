@@ -7,10 +7,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <limits.h>
-
 #include "jlib.h"
-#include "sqlops.h"
-#include "ui.h"
 #include "pass.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
@@ -110,7 +107,6 @@ int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
 
 // STATE MACHINES
-//
 enum APP_STATE {
 	APP_STATE_START,
 	APP_STATE_ARGS_TO_CONNECTION,
@@ -158,7 +154,6 @@ enum QUERY_STATE {
 enum QUERY_STATE query_state = QUERY_STATE_COMMAND;
 
 // GLOBAL WINDOWS
-//
 WINDOW* error_window;
 WINDOW* cmd_window;
 WINDOW* str_window;
@@ -177,25 +172,8 @@ MYSQL_RES* tbl_result = NULL;
 #define TBL_STR_FMT		"%-256s"
 #define TBL_LIST_W		32
 
-
-// FUNCTIONS
-int maxi(int a, int b) {
-	if (a > b)
-		return a;
-	return b;
-}
-int mini(int a, int b) {
-	if (a < b)
-		return a;
-	return b;
-}
-int clampi(int v, int min, int max) {
-	if (v > max)
-		return max;
-	else if (v < min)
-		return min;
-	return v;
-}
+int W = 0;
+int H = 0;
 
 
 FILE* _fp;
@@ -229,83 +207,6 @@ void xlog_conn(struct Connection *con) {
 }
 
 
-void dm_splitstr(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
-	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
-	// split the text int a bunch of sub strings that represent the words
-	int wordcount = 0;
-	int spacepos = 0;
-	for (int i=0; i < strlen(text) + 1; i++) {
-		if (text[i] == splitter || text[i] == '\n' || text[i] == '\0') {
-			// copy characters from last space pos to current position
-			int wordsize = i - spacepos;
-			memcpy(&words[wordcount], &text[spacepos], wordsize);
-			words[wordcount][wordsize] = '\0';
-			//xlogf("wordcount %d wordsize %d spacepos %d i %d [%s]\n", wordcount, wordsize, spacepos, i, words[wordcount]);
-			spacepos = i + 1;
-			wordcount++;
-		}
-		if (text[i] == '\n') {
-			// we ran into a newline, we want to split and make the prior contents a word, then also inject another word for newline after it
-			// special newline word
-			words[wordcount][0] = '\n';
-			words[wordcount][1] = '\0';
-			wordcount++;
-		}
-	}
-	*wordlen = wordcount;
-}
-void dm_lines(int m, int n, char words[m][n], int sentence_size, int o, int p, char lines[o][p], int *linelen) {
-	// take a collection of words that are null terminated and a sentence size
-	// and copy them into the lines buffer
-	int cursize = 0;
-	int linepos = 0;
-	for (int i=0; i < m; i++) {
-		char *word = words[i];
-		int wordsize = strlen(word);
-		//xlogf("compare %d + %d < %d\n", cursize, wordsize, sentence_size);
-		if (word[0] == '\n') {
-			// its a newline word, move to next line, reset space pos
-			cursize = 0;
-			linepos++;
-		}
-		else if (cursize + wordsize < sentence_size) {
-			// append word to line
-			//xlogf("append word [%s]\n", word);
-			memcpy(&lines[linepos][cursize], word, wordsize);
-			lines[linepos][cursize + wordsize] = ' ';
-			lines[linepos][cursize + wordsize + 1] = '\0';
-			cursize += wordsize + 1;
-		} else {
-			// move to next line, copy the word there
-			//xlogf("overflow sentence, start word [%s]\n", word);
-			linepos++;
-			memcpy(&lines[linepos], word, wordsize);
-			lines[linepos][wordsize] = ' ';
-			lines[linepos][wordsize + 1] = '\0';
-			cursize = wordsize + 1;
-		}
-	}
-	*linelen = linepos + 1;
-}
-void dm_wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
-	int wordlen = 0;
-	char words[1056][32];
-	dm_splitstr(text, ' ', 1056, 32, words, &wordlen);
-
-	int linelen = 0;
-	char lines[64][1056];
-	dm_lines(wordlen, 32, words, size, 64, 1056, lines, &linelen);
-
-	for (int i=0; i<linelen; i++) {
-		char *line = lines[i]; // null terminated
-		on_line(line);
-	}
-}
-
-
-
-int W = 0;
-int H = 0;
 
 bool ncurses_setup() {
 	// setup ncurses window
@@ -371,7 +272,7 @@ void app_setup() {
 
 	app_ui_layout();
 
-	j_strclr(the_query, QUERY_MAX);
+	strclr(the_query, QUERY_MAX);
 
 	// listen to os signal
 	signal(SIGWINCH, on_term_resize);
@@ -439,7 +340,7 @@ void display_error(const char *string) {
 	wmove(error_window, 1, 2);
 	waddstr(error_window, "ERROR");
 	errlinepos = 0;
-	dm_wordwrap(string, ERR_WIN_W - 4, display_error_on_line); // avoid gcc nested function supporta
+	wordwrap(string, ERR_WIN_W - 4, display_error_on_line); // avoid gcc nested function supporta
 
 	// render x: close
 	wmove(error_window, ERR_WIN_H - 2, 2);
@@ -696,12 +597,12 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 
 
 void set_query(char *query) {
-	j_strclr(the_query, QUERY_MAX);
+	strclr(the_query, QUERY_MAX);
 	strcpy(the_query, query);
 }
 
 void set_queryf(char *format, ...) {
-	j_strclr(the_query, QUERY_MAX);
+	strclr(the_query, QUERY_MAX);
 
 	va_list argptr;
 	va_start(argptr, format);
@@ -734,7 +635,7 @@ void clear_query() {
 		mysql_free_result(the_result); // free sql memory
 		the_result = NULL;
 	}
-	j_strclr(the_query, QUERY_MAX);
+	strclr(the_query, QUERY_MAX);
 	result_rerender_full = true;
 	result_rerender_focus = false;
 	last_focus_cell_r = 0;
@@ -779,7 +680,7 @@ void text_editor(WINDOW *window, char *buffer, int buffer_len) {
 				// capture and trim the contents of the window
 				// convert to character buffer for the line
 				chtype chtype_buffers[maxy][maxx];
-				j_strclr(buffer, buffer_len);
+				strclr(buffer, buffer_len);
 				int buffi = 0;
 				for (int r=0; r < maxy; r++) {
 					wmove(window, r, 0);
@@ -939,7 +840,7 @@ void render_result_header(int *render_row) {
 			max_field_length = 32;
 		int imaxf = (int)max_field_length;
 		char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-		j_strclr(buffer, imaxf + 1);
+		strclr(buffer, imaxf + 1);
 		snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
 
 		// cell coloring
@@ -1055,7 +956,7 @@ void render_result_row(int row_index, int *render_row) {
 			// after a random null character because im not that concerned about rendering out contents of BLOBs with that
 			// shitty data in it
 			char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-			j_strclr(buffer, imaxf + 1);
+			strclr(buffer, imaxf + 1);
 			if (isnull) {
 				// NULL
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
@@ -1064,9 +965,9 @@ void render_result_row(int row_index, int *render_row) {
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
 			} else {
 				// CONTENTS
-				j_strchrplc(row[i], '\t', ' ');
-				j_strchrplc(row[i], '\n', ' ');
-				j_strchrplc(row[i], '\r', ' ');
+				strchrplc(row[i], '\t', ' ');
+				strchrplc(row[i], '\n', ' ');
+				strchrplc(row[i], '\r', ' ');
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
 			}
 			waddstr(result_pad, buffer);
@@ -1239,7 +1140,7 @@ void run_db_interact(MYSQL *con) {
 				else if (!the_result && the_aff_rows) {
 					// no results but a query did affect some rows so print the info for that
 					char buffer[64];
-					j_strclr(buffer, 64);
+					strclr(buffer, 64);
 					sprintf(buffer, "%d %s", the_aff_rows, "affected row(s)");
 
 					wmove(result_pad, 0, 0);
@@ -1513,6 +1414,7 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
+// - rethink "die" statements in sqlops
 // - text editor needs qol work
 // - result nav pg up/dn on macos are different
 // - query editor delete key is different on macos
@@ -1570,7 +1472,7 @@ int parseargs(int argc, char **argv) {
 				else if (optopt == 's')
 					cli_error("-s missing ssh-tunnel-host");
 				else if (isprint(optopt)) {
-					char b[256]; j_strclr(b, 256);
+					char b[256]; strclr(b, 256);
 					sprintf(b, "unknown option '-%c'", optopt);
 					cli_error(b);
 				} else
@@ -1651,7 +1553,7 @@ int main(int argc, char **argv) {
 				if (arg_pass == NULL) {
 					// ask for password
 					scan_pass = (char*)malloc(256);
-					j_strclr(scan_pass, 256);
+					strclr(scan_pass, 256);
 					int nchr = 0;
 					while (nchr == 0) {
 						printf("Enter password: ");

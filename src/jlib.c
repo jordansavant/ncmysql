@@ -3,13 +3,39 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <stddef.h>
-
 #include <ncurses.h>
+#include <mysql/mysql.h>
+
+
+//////////////////////////////////////
+// MATH FUNCTIONS START
+
+int maxi(int a, int b) {
+	if (a > b)
+		return a;
+	return b;
+}
+int mini(int a, int b) {
+	if (a < b)
+		return a;
+	return b;
+}
+int clampi(int v, int min, int max) {
+	if (v > max)
+		return max;
+	else if (v < min)
+		return min;
+	return v;
+}
+
+// MATH FUNCTIONS END
+//////////////////////////////////////
+
 
 ///////////////////////////////////////
 // STRING FUNCTIONS START
 
-int j_strchrplc(char *str, char orig, char rep) {
+int strchrplc(char *str, char orig, char rep) {
 	char *ix = str;
 	int n = 0;
 	while((ix = strchr(ix, orig)) != NULL) {
@@ -19,19 +45,19 @@ int j_strchrplc(char *str, char orig, char rep) {
 	return n;
 }
 
-void j_strfill(char *string, int size, char c) {
+void strfill(char *string, int size, char c) {
 	for (int i = 0; i < size - 1; i++) {
 		string[i] = c;
 	}
 }
 
-void j_strclr(char *string, int size) {
+void strclr(char *string, int size) {
 	for (int i = 0; i < size; i++) {
 		string[i] = '\0';
 	}
 }
 
-size_t j_strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
+size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail) {
 	if(len == 0)
 		return 0;
 
@@ -60,6 +86,79 @@ size_t j_strtrim(char *out, size_t len, const char *str, bool trimlead, bool tri
 	out[out_size] = 0;
 
 	return out_size;
+}
+
+void strsplit(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen) {
+	//this is the mother who likes to speak and use the language of the underground to be able to tell players what they can and cannot do
+	// split the text int a bunch of sub strings that represent the words
+	int wordcount = 0;
+	int spacepos = 0;
+	for (int i=0; i < strlen(text) + 1; i++) {
+		if (text[i] == splitter || text[i] == '\n' || text[i] == '\0') {
+			// copy characters from last space pos to current position
+			int wordsize = i - spacepos;
+			memcpy(&words[wordcount], &text[spacepos], wordsize);
+			words[wordcount][wordsize] = '\0';
+			//xlogf("wordcount %d wordsize %d spacepos %d i %d [%s]\n", wordcount, wordsize, spacepos, i, words[wordcount]);
+			spacepos = i + 1;
+			wordcount++;
+		}
+		if (text[i] == '\n') {
+			// we ran into a newline, we want to split and make the prior contents a word, then also inject another word for newline after it
+			// special newline word
+			words[wordcount][0] = '\n';
+			words[wordcount][1] = '\0';
+			wordcount++;
+		}
+	}
+	*wordlen = wordcount;
+}
+void strlines(int m, int n, char words[m][n], int sentence_size, int o, int p, char lines[o][p], int *linelen) {
+	// take a collection of words that are null terminated and a sentence size
+	// and copy them into the lines buffer
+	int cursize = 0;
+	int linepos = 0;
+	for (int i=0; i < m; i++) {
+		char *word = words[i];
+		int wordsize = strlen(word);
+		//xlogf("compare %d + %d < %d\n", cursize, wordsize, sentence_size);
+		if (word[0] == '\n') {
+			// its a newline word, move to next line, reset space pos
+			cursize = 0;
+			linepos++;
+		}
+		else if (cursize + wordsize < sentence_size) {
+			// append word to line
+			//xlogf("append word [%s]\n", word);
+			memcpy(&lines[linepos][cursize], word, wordsize);
+			lines[linepos][cursize + wordsize] = ' ';
+			lines[linepos][cursize + wordsize + 1] = '\0';
+			cursize += wordsize + 1;
+		} else {
+			// move to next line, copy the word there
+			//xlogf("overflow sentence, start word [%s]\n", word);
+			linepos++;
+			memcpy(&lines[linepos], word, wordsize);
+			lines[linepos][wordsize] = ' ';
+			lines[linepos][wordsize + 1] = '\0';
+			cursize = wordsize + 1;
+		}
+	}
+	*linelen = linepos + 1;
+}
+void wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
+	int wordlen = 0;
+	char words[1056][32];
+	strsplit(text, ' ', 1056, 32, words, &wordlen);
+
+	int linelen = 0;
+	char lines[64][1056];
+	strlines(wordlen, 32, words, size, 64, 1056, lines, &linelen);
+
+	for (int i=0; i<linelen; i++) {
+		char *line = lines[i]; // null terminated
+		on_line(line);
+	}
 }
 
 // STRING FUNCTIONS END
@@ -142,3 +241,222 @@ int nc_mveol(WINDOW *win) {
 // NCURSES FUNCTIONS END
 ///////////////////////////////////////
 
+
+
+///////////////////////////////////////
+// NCURSES UI FUNCTIONS START
+
+void ui_setup()
+{
+	init_pair(COLOR_WHITE_BLACK,	COLOR_WHITE,	COLOR_BLACK);
+	init_pair(COLOR_RED_BLACK,		COLOR_RED,		COLOR_BLACK);
+	init_pair(COLOR_BLACK_BLACK,	COLOR_BLACK,	COLOR_BLACK);
+	init_pair(COLOR_CYAN_BLACK,		COLOR_CYAN,		COLOR_BLACK);
+	init_pair(COLOR_YELLOW_BLACK,	COLOR_YELLOW,	COLOR_BLACK);
+	init_pair(COLOR_MAGENTA_BLACK,	COLOR_MAGENTA,	COLOR_BLACK);
+	init_pair(COLOR_BLUE_BLACK,		COLOR_BLUE,		COLOR_BLACK);
+
+	init_pair(COLOR_BLUE_WHITE,	COLOR_BLUE,		COLOR_WHITE);
+	init_pair(COLOR_WHITE_BLUE,	COLOR_WHITE,	COLOR_BLUE);
+	init_pair(COLOR_BLACK_CYAN,	COLOR_BLACK,	COLOR_CYAN);
+	init_pair(COLOR_WHITE_RED,	COLOR_WHITE,	COLOR_RED);
+	init_pair(COLOR_YELLOW_RED,	COLOR_YELLOW,	COLOR_RED);
+	init_pair(COLOR_CYAN_BLUE,	COLOR_CYAN,		COLOR_BLUE);
+	init_pair(COLOR_BLACK_WHITE,COLOR_BLACK,	COLOR_WHITE);
+	init_pair(COLOR_BLACK_BLUE,	COLOR_BLACK,	COLOR_BLUE);
+	init_pair(COLOR_BLACK_YELLOW,COLOR_BLACK,	COLOR_YELLOW);
+	init_pair(COLOR_BLACK_MAGENTA,COLOR_BLACK,	COLOR_MAGENTA);
+	init_pair(COLOR_BLACK_RED,	COLOR_BLACK,	COLOR_RED);
+}
+
+WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)
+{
+	int y, x, indent;
+	getmaxyx(stdscr, y, x);
+	indent = (x - cols) / 2 + offset_col;
+	return newwin(rows, cols, offset_row, indent);
+}
+
+void ui_center_win(WINDOW* win, int offset_row, int offset_col, int rows, int cols)
+{
+	int y, x, indent;
+	getmaxyx(stdscr, y, x);
+	indent = (x - cols) / 2 + offset_col;
+	wresize(win, rows, cols);
+	mvwin(win, offset_row, indent);
+}
+
+void ui_clear_win(WINDOW *win)
+{
+	for (int i=0; i<getmaxy(win); i++) {
+		wmove(win, i,0);
+		wclrtoeol(win);
+	}
+	wrefresh(win);
+}
+
+
+void ui_clear_row(WINDOW *win, int row)
+{
+	wmove(win, row + 1, 0);
+	wclrtoeol(win);
+}
+
+void _strfill(char *string, int size, char c) {
+	for (int i = 0; i < size - 1; i++) {
+		string[i] = c;
+	}
+}
+void ui_color_row(WINDOW *win, int colorpair)
+{
+	int y,x;
+	getmaxyx(win, y, x);
+	wattrset(win, colorpair);
+	char buffer[x - 1];
+	_strfill(buffer, x - 1, ' ');
+	waddstr(win, buffer);
+}
+
+void ui_box_color(WINDOW* win, int colorpair)
+{
+	box(win, ACS_VLINE, ACS_HLINE);
+	//box(win, ':', '-');
+	//wborder(win, '|', '|', '-', '-', '+', '+', '+', '+');
+	//wattrset(win, COLOR_PAIR(colorpair));
+	//wborder(win, '|', '|', '=', '=', '@', '@', '@', '@');
+	//wattrset(win, COLOR_PAIR(COLOR_WHITE_BLACK));
+}
+
+void ui_box(WINDOW* win)
+{
+	box(win, ACS_VLINE, ACS_HLINE);
+	//ui_box_color(win, COLOR_MAGENTA_BLACK);
+}
+
+void ui_anchor_ur(WINDOW* win, int rows, int cols)
+{
+	int y, x;
+	getmaxyx(stdscr, y, x);
+	wresize(win, rows, cols);
+	mvwin(win, 0, x - cols);
+}
+
+void ui_anchor_ul(WINDOW *win, int rows, int cols)
+{
+	wresize(win, rows, cols);
+	mvwin(win, 0, 0);
+}
+
+void ui_anchor_br(WINDOW *win, int rows, int cols)
+{
+	int y, x;
+	getmaxyx(stdscr, y, x);
+	wresize(win, rows, cols);
+	mvwin(win, y - rows, x - cols);
+}
+
+void ui_anchor_bl(WINDOW *win, int rows, int cols, int yoff, int xoff)
+{
+	int y, x;
+	getmaxyx(stdscr, y, x);
+	wresize(win, rows, cols);
+	mvwin(win, y - rows + yoff, xoff);
+}
+
+void ui_anchor_center(WINDOW *win, int rows, int cols, int yoff, int xoff)
+{
+	int y, x;
+	getmaxyx(stdscr, y, x);
+	int oy = (y - rows) / 2 + yoff;
+	int ox = (x - cols) / 2 + xoff;
+	wresize(win, rows, cols);
+	mvwin(win, oy, ox);
+}
+
+// NCURSES UI FUNCTIONS END
+///////////////////////////////////////
+
+
+
+///////////////////////////////////////
+// MYSQL FUNCTIONS START
+
+MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
+	if (mysql_query(con, "SHOW DATABASES")) {
+        die(mysql_error(con));
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL) {
+        die(mysql_error(con));
+	}
+
+	*num_fields = mysql_num_fields(result);
+	*num_rows = mysql_num_rows(result);
+	return result;
+}
+
+MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode) {
+	if ((*errcode = mysql_query(con, query))) {
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = 0;
+        return NULL;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if ((*errcode = mysql_errno(con))) {
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = 0;
+		return NULL;
+	}
+
+	// inserts etc return null
+	if (result == NULL) {
+		*num_fields = 0;
+		*num_rows = 0;
+		*num_affect_rows = mysql_affected_rows(con);
+		return NULL;
+	}
+
+	*num_fields = mysql_num_fields(result);
+	*num_rows = mysql_num_rows(result);
+	*num_affect_rows = mysql_affected_rows(con);
+	return result;
+}
+
+void db_select(MYSQL *con, char *db) {
+    if (mysql_select_db(con, db)) {
+        die(mysql_error(con));
+    }
+}
+
+int col_size(MYSQL_RES* result, int index) {
+    MYSQL_ROW row;
+    mysql_data_seek(result, 0);
+    int len = 0;
+    while ((row = mysql_fetch_row(result))) {
+        int d = (int)strlen(row[index]);
+        len = maxi(d, len);
+    }
+    mysql_data_seek(result, 0);
+    return len;
+}
+
+//bool get_database(MYSQL *con, char *buf) {
+//	int nf, nr;
+//	MYSQL_RES* result = con_select(con, "SELECT DATABASE()", &nf, &nr);
+//	if (result == NULL)
+//		return false;
+//	if (nr == 0 || nf == 0)
+//		return false;
+//	MYSQL_ROW row = mysql_fetch_row(result);
+//	if (row == NULL)
+//		return false;
+//	buf = row[0];
+//	return true;
+//}
+
+// MYSQL FUNCTIONS END
+///////////////////////////////////////

@@ -1,9 +1,9 @@
 # http://www.cs.colby.edu/maxwell/courses/tutorials/maketutor/
 CC=gcc
 CFLAGS=-I.
-BUILD = src/main.c src/sqlops.c src/ui.c src/jlib.c
+BUILD = src/main.c src/jlib.c
 LIBS = -lmysqlclient -lncurses -lmenu -lm
-DEPS = src/ui.h src/pass.h src/sqlops.h src/jlib.h
+DEPS = src/pass.h src/jlib.h
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
