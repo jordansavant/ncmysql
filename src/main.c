@@ -105,8 +105,9 @@ MYSQL *selected_mysql_conn = NULL;
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
-bool result_rerender = true;
+bool result_rerender_full = true, result_rerender_focus = false;
 int result_shift_r=0, result_shift_c=0;
+int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
 
 // STATE MACHINES
@@ -838,9 +839,11 @@ void execute_query() {
 	if (!the_result && errcode > 0) { // inserts have null responses
 		display_error(mysql_error(selected_mysql_conn));
 	}
-	result_rerender = true;
+	result_rerender_full = true;
+	result_rerender_focus = false;
 	result_shift_r = 0;
 	result_shift_c = 0;
+	last_focus_cell_r = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
 	focus_cell_c_width = 0;
@@ -857,15 +860,184 @@ void clear_query() {
 		the_result = NULL;
 	}
 	strclr(the_query, QUERY_MAX);
-	result_rerender = true;
+	result_rerender_full = true;
+	result_rerender_focus = false;
 	result_shift_r = 0;
 	result_shift_c = 0;
+	last_focus_cell_r = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
 	focus_cell_c_width = 0;
 	focus_cell_c_pos = 0;
 	focus_cell_r_pos = 0;
 }
+
+
+void render_result_header(int *render_row) {
+
+	int result_row = *render_row;
+	int result_field = 0;
+	wmove(result_pad, result_row, 0);
+	MYSQL_FIELD *fh;
+	mysql_field_seek(the_result, 0);
+	while ((fh = mysql_fetch_field(the_result))) {
+
+		int cury,curx;
+		getyx(result_pad, cury, curx);
+
+		unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
+		if (max_field_length > 32)
+			max_field_length = 32;
+		int imaxf = (int)max_field_length;
+		char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+		strclr(buffer, imaxf + 1);
+		snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
+
+		// cell coloring
+		int attrs;
+		if (interact_state == INTERACT_STATE_RESULTS) {
+			if (focus_cell_r == result_row && focus_cell_c == result_field) {
+				attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+				focus_cell_c_width = imaxf;
+				focus_cell_c_pos = curx;
+				focus_cell_r_pos = result_row;
+			} else {
+				attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD;
+			}
+		} else {
+			attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
+		}
+		wattrset(result_pad, attrs);
+		waddstr(result_pad, buffer);
+
+		// column divider
+		wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+		waddch(result_pad, ' ');
+		wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
+		waddch(result_pad, ' ');
+		wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+		waddch(result_pad, ' ');
+
+		result_field++;
+	}
+
+	result_field = 0;
+	result_row++;
+}
+
+
+void render_result_row(int row_index, int *render_row) {
+
+	int result_row = *render_row;
+	int result_field = 0;
+
+	MYSQL_ROW row;
+	mysql_data_seek(the_result, row_index);
+	if ((row = mysql_fetch_row(the_result))) {
+		wmove(result_pad, result_row, 0);
+
+		int i=-1;
+		MYSQL_FIELD *f;
+		mysql_field_seek(the_result, 0);
+		while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
+
+			int cury,curx;
+			getyx(result_pad, cury, curx);
+
+			unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
+			// print into the cell
+			if (max_field_length > 32)
+				max_field_length = 32;
+			int imaxf;
+			bool isnull = !row[i];
+			bool isempty = !isnull && strlen(row[i]) == 0;
+			if (isnull)
+				imaxf = maxi(max_field_length, 4); // "NULL"
+			else if (isempty)
+				imaxf = maxi(max_field_length, 5); // "EMPTY"
+			else
+				imaxf = (int)max_field_length; // plus 3 for padding
+			//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
+
+			// determine cell style
+			int attrs;
+			if (focus_cell_r == result_row && focus_cell_c == result_field) {
+				attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+				focus_cell_c_width = imaxf;
+				focus_cell_c_pos = curx;
+				focus_cell_r_pos = result_row;
+			} else if (isnull) {
+				attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
+			} else if (isempty) {
+				attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
+			} else {
+				switch (f->type) {
+					case MYSQL_TYPE_TINY:
+					case MYSQL_TYPE_SHORT:
+					case MYSQL_TYPE_LONG:
+					case MYSQL_TYPE_INT24:
+					case MYSQL_TYPE_LONGLONG:
+						attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
+						break;
+					case MYSQL_TYPE_DECIMAL:
+					case MYSQL_TYPE_NEWDECIMAL:
+					case MYSQL_TYPE_FLOAT:
+					case MYSQL_TYPE_DOUBLE:
+					case MYSQL_TYPE_BIT:
+						attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
+						break;
+					case MYSQL_TYPE_DATETIME:
+					case MYSQL_TYPE_DATE:
+					case MYSQL_TYPE_TIME:
+						attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
+						break;
+					default:
+						attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
+						break;
+				}
+			}
+			//if (interact_state == INTERACT_STATE_RESULTS)
+			//	attrs |= A_BOLD;
+			wattrset(result_pad, attrs);
+
+
+			// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
+			// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
+			// after a random null character because im not that concerned about rendering out contents of BLOBs with that
+			// shitty data in it
+			char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
+			strclr(buffer, imaxf + 1);
+			if (isnull) {
+				// NULL
+				snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
+			} else if (isempty) {
+				// EMPTY STRING
+				snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
+			} else {
+				// CONTENTS
+				charreplace(row[i], '\t', ' ');
+				charreplace(row[i], '\n', ' ');
+				charreplace(row[i], '\r', ' ');
+				snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
+			}
+			waddstr(result_pad, buffer);
+
+			// column divider
+			wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+			waddch(result_pad, ' ');
+			wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
+			waddch(result_pad, ' ');
+			wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+			waddch(result_pad, ' ');
+
+			result_field++;
+		}
+
+		result_row++;
+		result_field = 0;
+	} // eo if row
+}
+
 
 void run_db_interact(MYSQL *con) {
 
@@ -972,178 +1144,51 @@ void run_db_interact(MYSQL *con) {
 
 			//////////////////////////////////////////////
 			// PRINT THE RESULTS PANEL
-			if (result_rerender) {
-				xlog("  - RERENDER");
-				result_rerender = false;
-				//wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-				ui_clear_win(result_pad);
+			if (result_rerender_full || result_rerender_focus) {
 				if (the_result) {
 
-					int result_row = 0;
-					int result_field = 0;
-
-					// print header
-					wmove(result_pad, result_row, 0);
-					MYSQL_FIELD *fh;
-					mysql_field_seek(the_result, 0);
-					while ((fh = mysql_fetch_field(the_result))) {
-
-						int cury,curx;
-						getyx(result_pad, cury, curx);
-
-						unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
-						if (max_field_length > 32)
-							max_field_length = 32;
-						int imaxf = (int)max_field_length;
-						char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-						strclr(buffer, imaxf + 1);
-						snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
-
-						// cell coloring
-						int attrs;
-						if (interact_state == INTERACT_STATE_RESULTS) {
-							if (focus_cell_r == result_row && focus_cell_c == result_field) {
-								attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
-								focus_cell_c_width = imaxf;
-								focus_cell_c_pos = curx;
-								focus_cell_r_pos = result_row;
-							} else {
-								attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD;
-							}
-						} else {
-							attrs = COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE;
+					if (result_rerender_focus) {
+						// This is a performance improvement, if we are changing what
+						// cell we are focused on we need to rerender those rows only for performance
+						// improvements
+						xlogf("  - RERENDER FOCUSED %d %d\n", last_focus_cell_r, focus_cell_r);
+						int result_row = 0;
+						if (last_focus_cell_r == 0 || focus_cell_r == 0) {
+							render_result_header(&result_row);
 						}
-						wattrset(result_pad, attrs);
-						waddstr(result_pad, buffer);
-
-						// column divider
-						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-						waddch(result_pad, ' ');
-						wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-						waddch(result_pad, ' ');
-						wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-						waddch(result_pad, ' ');
-
-						result_field++;
-					}
-					result_field = 0;
-					result_row++;
-
-					if (the_num_rows == 0) {
-						// print empty if no rows
-						wmove(result_pad, result_row++, 0);
-						wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
-						waddstr(result_pad, "no results");
+						if (last_focus_cell_r > 0 || focus_cell_r > 0) {
+							result_row = last_focus_cell_r;
+							render_result_row(result_row - 1, &result_row);
+							result_row = focus_cell_r;
+							render_result_row(result_row - 1, &result_row);
+						}
 					} else {
-						// print rows
-						MYSQL_ROW row;
-						mysql_data_seek(the_result, 0);
-						while ((row = mysql_fetch_row(the_result))) {
-							wmove(result_pad, result_row, 0);
+						xlog("  - RERENDER FULL");
+						// Do a full rerender of the result set
+						//wbkgd(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+						ui_clear_win(result_pad);
+						// print header
+						int result_row = 0;
+						render_result_header(&result_row);
+						result_row++;
 
-							int i=-1;
-							MYSQL_FIELD *f;
-							mysql_field_seek(the_result, 0);
-							while ((f = mysql_fetch_field(the_result)) && ++i > -1) {
-
-								int cury,curx;
-								getyx(result_pad, cury, curx);
-
-								unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
-								// print into the cell
-								if (max_field_length > 32)
-									max_field_length = 32;
-								int imaxf;
-								bool isnull = !row[i];
-								bool isempty = !isnull && strlen(row[i]) == 0;
-								if (isnull)
-									imaxf = maxi(max_field_length, 4); // "NULL"
-								else if (isempty)
-									imaxf = maxi(max_field_length, 5); // "EMPTY"
-								else
-									imaxf = (int)max_field_length; // plus 3 for padding
-								//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
-
-								// determine cell style
-								int attrs;
-								if (focus_cell_r == result_row && focus_cell_c == result_field) {
-									attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
-									focus_cell_c_width = imaxf;
-									focus_cell_c_pos = curx;
-									focus_cell_r_pos = result_row;
-								} else if (isnull) {
-									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
-								} else if (isempty) {
-									attrs = COLOR_PAIR(COLOR_YELLOW_BLACK);
-								} else {
-									switch (f->type) {
-										case MYSQL_TYPE_TINY:
-										case MYSQL_TYPE_SHORT:
-										case MYSQL_TYPE_LONG:
-										case MYSQL_TYPE_INT24:
-										case MYSQL_TYPE_LONGLONG:
-											attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
-											break;
-										case MYSQL_TYPE_DECIMAL:
-										case MYSQL_TYPE_NEWDECIMAL:
-										case MYSQL_TYPE_FLOAT:
-										case MYSQL_TYPE_DOUBLE:
-										case MYSQL_TYPE_BIT:
-											attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
-											break;
-										case MYSQL_TYPE_DATETIME:
-										case MYSQL_TYPE_DATE:
-										case MYSQL_TYPE_TIME:
-											attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
-											break;
-										default:
-											attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
-											break;
-									}
-								}
-								//if (interact_state == INTERACT_STATE_RESULTS)
-								//	attrs |= A_BOLD;
-								wattrset(result_pad, attrs);
-
-
-								// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
-								// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
-								// after a random null character because im not that concerned about rendering out contents of BLOBs with that
-								// shitty data in it
-								char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
-								strclr(buffer, imaxf + 1);
-								if (isnull) {
-									// NULL
-									snprintf(buffer, imaxf + 1, "%*s", imaxf, "NULL");
-								} else if (isempty) {
-									// EMPTY STRING
-									snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
-								} else {
-									// CONTENTS
-									charreplace(row[i], '\t', ' ');
-									charreplace(row[i], '\n', ' ');
-									charreplace(row[i], '\r', ' ');
-									snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
-								}
-								waddstr(result_pad, buffer);
-
-								// column divider
-								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-								waddch(result_pad, ' ');
-								wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-								waddch(result_pad, ' ');
-								wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-								waddch(result_pad, ' ');
-
-								result_field++;
+						int result_field = 0;
+						if (the_num_rows == 0) {
+							// print empty if no rows
+							wmove(result_pad, result_row++, 0);
+							wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+							waddstr(result_pad, "no results");
+						} else {
+							// print rows
+							for (int i=0; i < the_num_rows; i++) {
+								render_result_row(i, &result_row);
+								result_row++;
 							}
-
-							result_row++;
-							result_field = 0;
-						} // eo while row
-					} // eo if rows
+						}
+					}
 				} // eo if results
-				else if (the_aff_rows) {
+				else if (!the_result && the_aff_rows) {
+					// no results but a query did affect some rows so print the info for that
 					char buffer[64];
 					strclr(buffer, 64);
 					sprintf(buffer, "%d %s", the_aff_rows, "affected row(s)");
@@ -1152,6 +1197,9 @@ void run_db_interact(MYSQL *con) {
 					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
 					waddstr(result_pad, buffer);
 				} // eo if affected rows
+
+				result_rerender_focus = false;
+				result_rerender_full = false;
 			} // eo if rerender
 
 
@@ -1266,7 +1314,7 @@ void run_db_interact(MYSQL *con) {
 								interact_state = INTERACT_STATE_QUERY;
 							else
 								interact_state = INTERACT_STATE_RESULTS;
-							result_rerender = true;
+							result_rerender_full = true;
 							break;
 						case KEY_d:
 							mysql_data_seek(tbl_result, tbl_index);
@@ -1315,7 +1363,7 @@ void run_db_interact(MYSQL *con) {
 									interact_state = INTERACT_STATE_RESULTS;
 								else
 									interact_state = INTERACT_STATE_TABLE_LIST;
-								result_rerender = true;
+								result_rerender_full = true;
 								break;
 							case KEY_DC:
 							case KEY_BACKSPACE:
@@ -1519,23 +1567,25 @@ void run_db_interact(MYSQL *con) {
 								interact_state = INTERACT_STATE_TABLE_LIST;
 							else
 								interact_state = INTERACT_STATE_QUERY;
-							result_rerender = true;
+							result_rerender_full = true;
 							break;
 						case KEY_UP:
+							last_focus_cell_r = focus_cell_r;
 							focus_cell_r = maxi(0, focus_cell_r - 1);
-							result_rerender = true;
+							result_rerender_focus = true;
 							break;
 						case KEY_DOWN:
+							last_focus_cell_r = focus_cell_r;
 							focus_cell_r = mini(the_num_rows, focus_cell_r + 1);
-							result_rerender = true;
+							result_rerender_focus = true;
 							break;
 						case KEY_LEFT:
 							focus_cell_c = maxi(0, focus_cell_c - 1);
-							result_rerender = true;
+							result_rerender_focus = true;
 							break;
 						case KEY_RIGHT:
 							focus_cell_c = mini(the_num_fields - 1, focus_cell_c + 1);
-							result_rerender = true;
+							result_rerender_focus = true;
 							break;
 						//case KEY_UP:
 						//	result_shift_r--;
@@ -1590,12 +1640,11 @@ void run_db_interact(MYSQL *con) {
 
 
 // TODO LIST
-// - text editor needs a lot of quol work
-// - cell editor
-// - usage message, error functions etc
-// - dynamic pad size for result set, right now its fixed
 // - build on os x
-// - deal with fubard CSV values
+// - text editor needs a lot of quol work
+// - cell editor, col sorter
+// - dynamic pad size for result set, right now its fixed
+// - deal with fubard CSV values in connection file (strtok splodes)
 
 char *program_name;
 void cli_usage(FILE* f) {
