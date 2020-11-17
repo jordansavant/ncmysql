@@ -602,6 +602,26 @@ void clear_query() {
 }
 
 
+bool get_focus_data(char *buffer, int len) {
+	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
+		return false;
+	if (focus_cell_r == 0) {
+		// TODO get header field data
+		mysql_field_seek(the_result, focus_cell_c);
+		MYSQL_FIELD *fh = mysql_fetch_field(the_result);
+		strncpy(buffer, fh->name, len - 1);
+		buffer[len - 1] = '\0';
+		return true;
+	} else {
+		mysql_data_seek(the_result, focus_cell_r - 1);
+		MYSQL_ROW row = mysql_fetch_row(the_result);
+		strncpy(buffer, row[focus_cell_c], len - 1);
+		buffer[len - 1] = '\0';
+	}
+	return true;
+}
+
+
 void render_result_header(int *render_row) {
 
 	int result_row = *render_row;
@@ -626,7 +646,7 @@ void render_result_header(int *render_row) {
 		int attrs;
 		if (interact_state == INTERACT_STATE_RESULTS) {
 			if (focus_cell_r == result_row && focus_cell_c == result_field) {
-				attrs = COLOR_PAIR(COLOR_BLACK_CYAN);
+				attrs = COLOR_PAIR(COLOR_BLACK_CYAN) | A_UNDERLINE;
 				focus_cell_c_width = imaxf;
 				focus_cell_c_pos = curx;
 				focus_cell_r_pos = result_row;
@@ -957,13 +977,16 @@ void run_db_interact(MYSQL *con) {
 					else
 						display_cmd("EDIT QUERY", "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
-				case INTERACT_STATE_RESULTS:
+				case INTERACT_STATE_RESULTS: {
 					// string bar (none)
-					display_str("");
+					char buffer[256];
+					if (get_focus_data(buffer, 256))
+						display_str(buffer);
 
 					// command bar
 					display_cmd("RESULTS", "tab:next | x:close");
 					break;
+				}
 			}
 
 
