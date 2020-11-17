@@ -11,51 +11,6 @@
 #include "pass.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-#define KEY_RETURN	10
-#define KEY_ESC		27
-#define KEY_SPACE	32
-#define KEY_TAB		9
-
-#define KEY_ctrl_e	5
-#define KEY_ctrl_x	24
-
-#define KEY_a		97
-#define KEY_b		98
-#define KEY_c		99
-#define KEY_d		100
-#define KEY_e		101
-#define KEY_f		102
-#define KEY_g		103
-#define KEY_h		104
-#define KEY_i		105
-#define KEY_j		106
-#define KEY_k		107
-#define KEY_l		108
-#define KEY_m		109
-#define KEY_n		110
-#define KEY_o		111
-#define KEY_p		112
-#define KEY_q		113
-#define KEY_r		114
-#define KEY_s		115
-#define KEY_t		116
-#define KEY_u		117
-#define KEY_v		118
-#define KEY_w		119
-#define KEY_x		120
-#define KEY_y		121
-#define KEY_z		122
-
-#define KEY_0		48
-#define KEY_1		49
-#define KEY_2		50
-#define KEY_3		51
-#define KEY_4		52
-#define KEY_5		53
-#define KEY_6		54
-#define KEY_7		55
-#define KEY_8		56
-#define KEY_9		57
 
 // DB CONNECTION INFORMATION
 // We need to rely on that these values, be them populated from args or from
@@ -432,9 +387,9 @@ void run_con_select() {
 				   callback((char *)item_name(cur_item));
 				   pos_menu_cursor(my_menu);
 				   if (con_selected) {
-				       done = true;
+					   done = true;
 					   app_con = app_cons[con_select_index]; // selct the connection
-				       break;
+					   break;
 				   }
 			   }
 			   break;
@@ -644,182 +599,6 @@ void clear_query() {
 	focus_cell_c_width = 0;
 	focus_cell_c_pos = 0;
 	focus_cell_r_pos = 0;
-}
-
-
-void text_editor(WINDOW *window, char *buffer, int buffer_len) {
-	curs_set(1);
-
-	// beg and end are screen coords of editor window
-	// min and max are internal window coords
-	int begy,begx, endx,endy, miny=0,minx=0, maxy,maxx;
-	getbegyx(window, begy, begx);
-	getmaxyx(window, maxy, maxx);
-	endy = begy + maxy - 1; endx = begx + maxx; // add beginning coordinates to max sizes
-
-	// cur is the position of the cursor within the window
-	int cury,curx;
-	getyx(window, cury,curx);
-	cury += begy; curx += begx;
-	//xlogf("cury=%d curx=%d begy=%d begx=%d maxy=%d maxx=%d\n", cury, curx, begy, begx, maxy, maxx);
-	if (cury < begy || curx < begx || cury > endy || curx > endx)
-		cury=begy, curx=begx; // default to beggining
-
-	move(cury, curx);
-	wmove(window, cury - begy, curx - begx);
-
-	bool editing = true;
-	while (editing) {
-		// Lock down editing to this position
-		int key = getch();
-		switch (key) {
-			case KEY_ctrl_x:
-			case KEY_ESC: {
-				editing = false;
-
-				// capture and trim the contents of the window
-				// convert to character buffer for the line
-				chtype chtype_buffers[maxy][maxx];
-				strclr(buffer, buffer_len);
-				int buffi = 0;
-				for (int r=0; r < maxy; r++) {
-					wmove(window, r, 0);
-					winchstr(window, chtype_buffers[r]);
-					// to trim the line we should count backwards until the first character
-					// you see maxx + 1 because maxx is the final index, not the size
-
-					// convert chtypes to characters
-					int ccount = nc_strtrimlen(chtype_buffers[r], maxx);
-					if (maxx + 1 == ccount)
-						continue; // all characters are empty
-
-					// ccount is the number of characters on the end
-					int strsize = maxx - ccount + 1;
-					//xlogf("row %d	ccount %d\n", r, ccount);
-					for (int c=0; c < strsize; c++) {
-						buffer[buffi++] = chtype_buffers[r][c] & A_CHARTEXT;
-					}
-					buffer[buffi++] = '\n';
-				}
-				// trim final newline
-				buffer[buffi-1] = '\0';
-
-				xlog(buffer);
-
-				break;
-			}
-			// MOVE CURSOR
-			case KEY_LEFT:
-				curx = clampi(curx - 1, begx, endx);
-				move(cury, curx);
-				wmove(window, cury - begy, curx - begx);
-				break;
-			case KEY_RIGHT:
-				curx = clampi(curx + 1, begx, endx);
-				move(cury, curx);
-				wmove(window, cury - begy, curx - begx);
-				break;
-			case KEY_UP:
-				cury = clampi(cury - 1, begy, endy);
-				move(cury, curx);
-				wmove(window, cury - begy, curx - begx);
-				break;
-			case KEY_DOWN:
-				cury = clampi(cury + 1, begy, endy);
-				move(cury, curx);
-				wmove(window, cury - begy, curx - begx);
-				break;
-				// TEXT EDITOR
-			default:
-				// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
-				if (key > 31 && key < 127) { // ascii input
-					int winy, winx;
-					getyx(window, winy, winx); // winx is position in line
-					int sizeleft = maxx - winx - 1;
-					// we need to shift everthing after this position over without overflowing the text area
-					chtype contents[maxx];
-					winchstr(window, contents); // this captures everything after the cursor
-					// insert the character into the line
-					waddch(window, key);
-					// reinsert the remaining characters
-					for (int i=0; i < sizeleft; i++) {
-						char c = contents[i] & A_CHARTEXT;
-						if (c > 31 && c < 127)
-							waddch(window, contents[i]);
-					}
-					wmove(window, winy, winx+1);
-				}
-				if (key == '\n') { // new line
-					waddch(window, '\n');
-				}
-				if (key == '\t') {
-					// TODO this does not deal well when injecting into middle of string
-					waddch(window, '\t');
-				}
-				if (key == KEY_BACKSPACE) { // regular delete
-					int winy, winx;
-					getyx(window, winy, winx); // winx is position in line
-
-					if (curx - begx == 0) {
-						// already at beginning of line
-						// clear line and copy contents up to previous line
-						int start_winy=winy, start_winx=winx;
-
-						// copy line and clear line
-						chtype contents[maxx];
-						nc_cutline(window, contents, 0, maxx);
-
-						// go to line above
-						winy = clampi(winy - 1, 0, maxy);
-						wmove(window, winy, winx);
-						int target_winy = winy;
-
-						// go to end of line
-						int target_winx = nc_mveol(window);
-
-						// append contents to end of line
-						nc_paste(window, contents);
-
-						// repeat for every Y below our original position
-						for (int y=start_winy; y<maxy - 1; y++) {
-							//xlogf("LOOP ON %d\n", y);
-							// move next line to our current line
-							winy = clampi(y + 1, 0, maxy);
-							winx = 0;
-							wmove(window, winy, winx);
-
-							// get line contents
-							chtype linecontents[maxx];
-							int sz = nc_cutline(window, linecontents, 0, maxx);
-							//xlogf("copy from %d,%d size=%d\n", winy, winx, sz);
-							if (sz == 0)
-								continue;
-
-							// copy to line above
-							winy = clampi(y, 0, maxy);
-							wmove(window, winy, winx);
-							nc_paste(window, linecontents);
-							//xlogf("copy to %d,%d size=%d\n", winy, winx, sz);
-						}
-						// reset back to original position
-						wmove(window, target_winy, target_winx);
-					} else {
-						winx = clampi(winx - 1, 0, maxx);
-						wmove(window, winy, winx);
-						wdelch(window);
-					}
-				}
-				if (key == KEY_DC) { // forward delete
-					wdelch(window);
-				}
-				wrefresh(window);
-				getyx(window, cury,curx);
-				cury += begy; curx += begx;
-				break;
-		} // eo key switch
-	} // eo editing loop
-
-	curs_set(0);
 }
 
 
@@ -1328,7 +1107,7 @@ void run_db_interact(MYSQL *con) {
 						xlog("   QUERY_STATE_EDIT");
 
 						char buffer[QUERY_MAX];
-						text_editor(query_window, buffer, QUERY_MAX);
+						nc_text_editor(query_window, buffer, QUERY_MAX);
 
 						// capture query
 						set_query(buffer);
