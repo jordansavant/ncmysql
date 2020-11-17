@@ -106,7 +106,6 @@ char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
 bool result_rerender_full = true, result_rerender_focus = false;
-int result_shift_r=0, result_shift_c=0;
 int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
 
@@ -841,8 +840,6 @@ void execute_query() {
 	}
 	result_rerender_full = true;
 	result_rerender_focus = false;
-	result_shift_r = 0;
-	result_shift_c = 0;
 	last_focus_cell_r = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
@@ -862,8 +859,6 @@ void clear_query() {
 	strclr(the_query, QUERY_MAX);
 	result_rerender_full = true;
 	result_rerender_focus = false;
-	result_shift_r = 0;
-	result_shift_c = 0;
 	last_focus_cell_r = 0;
 	focus_cell_r = 0;
 	focus_cell_c = 0;
@@ -1433,8 +1428,6 @@ void run_db_interact(MYSQL *con) {
 			int y_overhang_amt = focus_cell_r_pos - rp_height;
 			if (y_overhang_amt > 0)
 				rp_shift_r = y_overhang_amt;
-			//int rp_shift_r = result_shift_r;
-			//int rp_shift_c = result_shift_c;
 			int rp_y = QUERY_WIN_H + 1;
 			int rp_x = tbl_render_w + 1 + 2 + 1;
 			prefresh(result_pad, rp_shift_r,rp_shift_c, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
@@ -1599,33 +1592,23 @@ void run_db_interact(MYSQL *con) {
 							focus_cell_c = mini(the_num_fields - 1, focus_cell_c + 1);
 							result_rerender_focus = true;
 							break;
-						//case KEY_UP:
-						//	result_shift_r--;
-						//	result_shift_r = maxi(0, result_shift_r);
-						//	break;
-						//case KEY_DOWN:
-						//	result_shift_r++;
-						//	break;
-						//case KEY_LEFT:
-						//	result_shift_c -= 2;
-						//	result_shift_c = maxi(0, result_shift_c);
-						//	break;
-						//case KEY_RIGHT:
-						//	result_shift_c += 2;
-						//	break;
 						case KEY_PPAGE: // pageup
-							result_shift_r -= 20;
-							result_shift_r = maxi(0, result_shift_r);
+							last_focus_cell_r = focus_cell_r;
+							focus_cell_r = maxi(0, focus_cell_r - 20);
+							result_rerender_focus = true;
 							break;
 						case KEY_NPAGE:
-							result_shift_r += 20;
+							last_focus_cell_r = focus_cell_r;
+							focus_cell_r = mini(the_num_rows, focus_cell_r + 20);
+							result_rerender_focus = true;
 							break;
 						case KEY_HOME:
-							result_shift_c -= 40;
-							result_shift_c = maxi(0, result_shift_c);
+							focus_cell_c = 0;
+							result_rerender_focus = true;
 							break;
 						case KEY_END:
-							result_shift_c += 40;
+							focus_cell_c = maxi(0, the_num_fields - 1);
+							result_rerender_focus = true;
 							break;
 					}
 					break;
