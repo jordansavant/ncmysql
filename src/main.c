@@ -572,6 +572,9 @@ void execute_query() {
 	if (!the_result && errcode > 0) { // inserts have null responses
 		display_error(mysql_error(selected_mysql_conn));
 	}
+	// resize result pad to match size of result set plus its dividers etc
+	//
+
 	result_rerender_full = true;
 	result_rerender_focus = false;
 	last_focus_cell_r = 0;
@@ -621,6 +624,27 @@ bool get_focus_data(char *buffer, int len) {
 	return true;
 }
 
+int get_min_cell_size(MYSQL_FIELD *f) {
+	unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column
+	// max size of the field is 32 characters rendered
+	if (max_field_length > 32)
+		max_field_length = 32;
+
+	// min size is 6 so we can support "empty" data
+	if (max_field_length < 5)
+		max_field_length = 5;
+
+	return (int)max_field_length;
+}
+
+void render_result_divider() {
+	wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+	waddch(result_pad, ' ');
+	wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
+	waddch(result_pad, ' ');
+	wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+	waddch(result_pad, ' ');
+}
 
 void render_result_header(int *render_row) {
 
@@ -634,10 +658,7 @@ void render_result_header(int *render_row) {
 		int cury,curx;
 		getyx(result_pad, cury, curx);
 
-		unsigned long max_field_length = maxi(5, maxi(fh->max_length, fh->name_length)); // size of biggest value in column
-		if (max_field_length > 32)
-			max_field_length = 32;
-		int imaxf = (int)max_field_length;
+		int imaxf = get_min_cell_size(fh);
 		char buffer[imaxf + 1]; // plus 1 for for guaranteeing terminating null character
 		strclr(buffer, imaxf + 1);
 		snprintf(buffer, imaxf + 1, "%*s", imaxf, fh->name);
@@ -660,12 +681,7 @@ void render_result_header(int *render_row) {
 		waddstr(result_pad, buffer);
 
 		// column divider
-		wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-		waddch(result_pad, ' ');
-		wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-		waddch(result_pad, ' ');
-		wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-		waddch(result_pad, ' ');
+		render_result_divider();
 
 		result_field++;
 	}
@@ -693,20 +709,9 @@ void render_result_row(int row_index, int *render_row) {
 			int cury,curx;
 			getyx(result_pad, cury, curx);
 
-			unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column, 5 for EMPTY
-			// print into the cell
-			if (max_field_length > 32)
-				max_field_length = 32;
-			int imaxf;
+			int imaxf = get_min_cell_size(f);
 			bool isnull = !row[i];
 			bool isempty = !isnull && strlen(row[i]) == 0;
-			if (isnull)
-				imaxf = maxi(max_field_length, 4); // "NULL"
-			else if (isempty)
-				imaxf = maxi(max_field_length, 5); // "EMPTY"
-			else
-				imaxf = (int)max_field_length; // plus 3 for padding
-			//xlogf("%s:%d %s imaxf=%d\n", __FILE__, __LINE__, f->name, imaxf);
 
 			// determine cell style
 			int attrs;
@@ -745,10 +750,7 @@ void render_result_row(int row_index, int *render_row) {
 						break;
 				}
 			}
-			//if (interact_state == INTERACT_STATE_RESULTS)
-			//	attrs |= A_BOLD;
 			wattrset(result_pad, attrs);
-
 
 			// data in the field is not a null terminated string, its a fixed size since binary data can contain null characters
 			// but they do null terminate where they data ends, so its a mixed bag, i am going to just ignore anything
@@ -772,15 +774,11 @@ void render_result_row(int row_index, int *render_row) {
 			waddstr(result_pad, buffer);
 
 			// column divider
-			wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-			waddch(result_pad, ' ');
-			wattrset(result_pad, COLOR_PAIR(COLOR_BLACK_BLUE));
-			waddch(result_pad, ' ');
-			wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-			waddch(result_pad, ' ');
+			render_result_divider();
 
 			result_field++;
-		}
+
+		} // eo column loop
 
 		result_row++;
 		result_field = 0;
@@ -1218,8 +1216,6 @@ void run_db_interact(MYSQL *con) {
 // TODO LIST
 // - rethink "die" statements in sqlops
 // - text editor needs qol work
-// - result nav pg up/dn on macos are different
-// - query editor delete key is different on macos
 // - cell editor, col sorter
 // - dynamic pad size for result set, right now its fixed
 // - deal with fubard CSV values in connection file (strtok splodes) (optional tunnel etc)
