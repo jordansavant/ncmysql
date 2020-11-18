@@ -307,6 +307,7 @@ void display_error(const char *string) {
 	do {
 		wrefresh(error_window);
 	} while (getch() != KEY_x);
+	clear(); refresh();
 }
 
 
@@ -549,7 +550,22 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 }
 
 
+void refresh_tables() {
 
+	if (tbl_result != NULL)
+		mysql_free_result(tbl_result);
+
+	tbl_index = 0; // default to first table
+	tbl_count = 0;
+	tbl_result = NULL;
+
+	// populate the db table listing
+	int num_fields, num_rows, aff_rows, errcode;
+	tbl_result = db_query(selected_mysql_conn, "SHOW TABLES", &num_fields, &num_rows, &aff_rows, &errcode);
+	// TODO handle errocode failure
+	//xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
+	tbl_count = num_rows;
+}
 
 void set_query(char *query) {
 	strclr(the_query, QUERY_MAX);
@@ -588,6 +604,10 @@ void execute_query() {
 	result_w = maxi(result_w, sx);
 	wresize(result_pad, result_h, result_w);
 
+	// there is also the potential that the query changed the database with USE database
+	// so lets refresh tables when we execute
+	refresh_tables();
+
 	// reset our properties for the execution
 	result_rerender_full = true;
 	result_rerender_focus = false;
@@ -616,6 +636,8 @@ void clear_query() {
 	focus_cell_c_width = 0;
 	focus_cell_c_pos = 0;
 	focus_cell_r_pos = 0;
+
+	ui_clear_win(result_pad);
 }
 
 
@@ -849,17 +871,8 @@ void run_db_interact(MYSQL *con) {
 			xlog(" DB_STATE_START");
 
 			tbl_pad = newpad(tbl_pad_h, tbl_pad_w); // h, w
-			tbl_index = 0; // default to first table
-			tbl_count = 0;
-			tbl_result = NULL;
 
-			// populate the db table listing
-			int num_fields, num_rows, aff_rows, errcode;
-			tbl_result = db_query(con, "SHOW TABLES", &num_fields, &num_rows, &aff_rows, &errcode);
-			// TODO handle errocode failure
-			int max_table_name = col_size(tbl_result, 0);
-			//xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
-			tbl_count = num_rows;
+			refresh_tables();
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
 			query_state = QUERY_STATE_COMMAND;
@@ -877,7 +890,8 @@ void run_db_interact(MYSQL *con) {
 			// and return to db selection
 			display_error("No tables were found in the selected database");
 
-			db_state = DB_STATE_END;
+			clear();
+			db_state = DB_STATE_INTERACT;
 
 			break;
 
@@ -888,29 +902,32 @@ void run_db_interact(MYSQL *con) {
 
 			////////////////////////////////////////////////
 			// PRINT THE TABLES
-			MYSQL_ROW row;
-			int r = 0, c = 0;
-			//wbkgdset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE)); // on OSX this does not play well with wattrset for background colors
 			ui_clear_win(tbl_pad);
-			mysql_data_seek(tbl_result, 0);
-			while ((row = mysql_fetch_row(tbl_result))) {
-				wmove(tbl_pad, r, c);
-				// highlight focused table
-				if (r == tbl_index) {
-					if (interact_state == INTERACT_STATE_TABLE_LIST){
-						wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
-					}else{
-						wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
+			int r = 0, c = 0;
+			if (tbl_result && tbl_count > 0) {
+				MYSQL_ROW row;
+				//wbkgdset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE)); // on OSX this does not play well with wattrset for background colors
+				mysql_data_seek(tbl_result, 0);
+				while ((row = mysql_fetch_row(tbl_result))) {
+					wmove(tbl_pad, r, c);
+					// highlight focused table
+					if (r == tbl_index) {
+						if (interact_state == INTERACT_STATE_TABLE_LIST){
+							wattrset(tbl_pad, COLOR_PAIR(COLOR_BLACK_CYAN));
+						}else{
+							wattrset(tbl_pad, COLOR_PAIR(COLOR_CYAN_BLUE));
+						}
+					} else {
+						wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 					}
-				} else {
-					wattrset(tbl_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+					// print table name with padding for focused background coloring
+					char buffer[tbl_pad_w];
+					sprintf(buffer, TBL_STR_FMT, row[0]);
+					waddstr(tbl_pad, buffer);
+					r++;
 				}
-				// print table name with padding for focused background coloring
-				char buffer[tbl_pad_w];
-				sprintf(buffer, TBL_STR_FMT, row[0]);
-				waddstr(tbl_pad, buffer);
-				r++;
 			}
+
 			// wbkgdset does not play well with wattrset backgrounds on top of them on OS X
 			// so I am filling backgrounds manually when I need them
 			while (r < TBL_PAD_H) {
@@ -1006,9 +1023,13 @@ void run_db_interact(MYSQL *con) {
 				case INTERACT_STATE_TABLE_LIST: {
 					// string bar
 					// print the table title fully since they can be cut off
-					mysql_data_seek(tbl_result, tbl_index);
-					MYSQL_ROW r = mysql_fetch_row(tbl_result);
-					display_str(r[0]);
+					if (tbl_result && tbl_count > 0) {
+						mysql_data_seek(tbl_result, tbl_index);
+						MYSQL_ROW r = mysql_fetch_row(tbl_result);
+						display_str(r[0]);
+					} else {
+						display_str("");
+					}
 
 					// command bar
 					display_cmd("TABLES", "s/enter:select-100 | d:describe | tab:next | x:close");
@@ -1118,17 +1139,21 @@ void run_db_interact(MYSQL *con) {
 							result_rerender_full = true;
 							break;
 						case KEY_d:
-							mysql_data_seek(tbl_result, tbl_index);
-							MYSQL_ROW r = mysql_fetch_row(tbl_result);
-							set_queryf("DESCRIBE %s", r[0]);
-							execute_query();
+							if (tbl_result && tbl_count > 0) {
+								mysql_data_seek(tbl_result, tbl_index);
+								MYSQL_ROW r = mysql_fetch_row(tbl_result);
+								set_queryf("DESCRIBE %s", r[0]);
+								execute_query();
+							}
 							break;
 						case KEY_s:
 						case KEY_RETURN: {
-							mysql_data_seek(tbl_result, tbl_index);
-							MYSQL_ROW r = mysql_fetch_row(tbl_result);
-							set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
-							execute_query();
+							if (tbl_result && tbl_count > 0) {
+								mysql_data_seek(tbl_result, tbl_index);
+								MYSQL_ROW r = mysql_fetch_row(tbl_result);
+								set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
+								execute_query();
+							}
 							break;
 						}
 						case KEY_UP:
@@ -1256,7 +1281,8 @@ void run_db_interact(MYSQL *con) {
 			// clear main query
 			clear_query();
 			// clear table list query
-			mysql_free_result(tbl_result); // free sql memory
+			if (tbl_result)
+				mysql_free_result(tbl_result); // free sql memory
 			tbl_result = NULL;
 			// unset db
 			db_selected = false;
@@ -1270,7 +1296,7 @@ void run_db_interact(MYSQL *con) {
 // - rethink "die" statements in sqlops
 // - text editor needs qol work
 // - cell editor, col sorter
-// - dynamic pad size for result set, right now its fixed
+// - what if someone runs "USE DATABASE()" in the sql editor?
 // - deal with fubard CSV values in connection file (strtok splodes) (optional tunnel etc)
 
 char *program_name;
@@ -1292,10 +1318,6 @@ void cli_error(char *err) {
 	exit(1);
 }
 
-/*
- * USAGE
- * ./a.out (-h mysqlhost [-l port] -u mysqluser [-p mysqlpass] [-s sshtunnelhost], [-f connectfile])
- */
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL;
