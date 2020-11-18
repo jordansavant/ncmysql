@@ -223,7 +223,7 @@ void app_setup() {
 	str_window = newwin(0,0,0,0);
 	cmd_window = newwin(0,0,0,0);
 	query_window = newwin(0,0,0,0);
-	result_pad = newpad(2056,4112); // TODO resize dynamically based on the result size of cells,rows and padding
+	result_pad = newpad(1,1);
 
 	app_ui_layout();
 
@@ -565,6 +565,9 @@ void set_queryf(char *format, ...) {
 	va_end(argptr);
 }
 
+int calc_result_pad_width();
+int calc_result_pad_height();
+
 void execute_query() {
 	int errcode;
 	xlog(the_query);
@@ -572,9 +575,20 @@ void execute_query() {
 	if (!the_result && errcode > 0) { // inserts have null responses
 		display_error(mysql_error(selected_mysql_conn));
 	}
-	// resize result pad to match size of result set plus its dividers etc
-	//
 
+	// resize result pad to match size of result set plus its dividers etc
+	// so, as it is the widths and heights work great for resizing the pad
+	// however when rendering the resized pad ncurses draws old areas
+	// so because of this limitation I am going to make the min sizes
+	// no smaller than the screen sizes
+	int result_h=calc_result_pad_height(), result_w = calc_result_pad_width();
+	int sy,sx;
+	getmaxyx(stdscr, sy, sx);
+	result_h = maxi(result_h, sy);
+	result_w = maxi(result_w, sx);
+	wresize(result_pad, result_h, result_w);
+
+	// reset our properties for the execution
 	result_rerender_full = true;
 	result_rerender_focus = false;
 	last_focus_cell_r = 0;
@@ -635,6 +649,41 @@ int get_min_cell_size(MYSQL_FIELD *f) {
 		max_field_length = 5;
 
 	return (int)max_field_length;
+}
+
+int calc_result_pad_width() {
+	// looks at result to determine size of result pad width
+	if (!the_result) {
+		// if no result then we may have run an execute so lets just give it room
+		// to rendere affected rows
+		return 64;
+	}
+
+	// if we have results we need to calcaulate the width of the columns + dividers
+	int width = 0;
+	MYSQL_FIELD *fh;
+	mysql_field_seek(the_result, 0);
+	while ((fh = mysql_fetch_field(the_result))) {
+		int imaxf = get_min_cell_size(fh); // size of string data to print
+		width += (imaxf + 3); // plus size of divider
+	}
+
+	return width;
+}
+
+int calc_result_pad_height() {
+	// looks at result to determine size of result pad width
+	if (!the_result) {
+		// if no result then we may have run an execute so lets just give it room
+		// to rendere affected rows
+		return 1;
+	}
+
+	// if we have results we need to calcaulate the width of the rowsize + header
+	if (the_num_rows == 0)
+		return 1 + 1; // header plus "no results" line
+
+	return the_num_rows + 1; // rows and header
 }
 
 void render_result_divider() {
@@ -999,6 +1048,7 @@ void run_db_interact(MYSQL *con) {
 			// if wider than tbl_render_w then shift pad the difference
 			int rp_width = sx - tbl_render_w - 3; // gutter + len/index swap
 			int rp_height = sy - QUERY_WIN_H - 1 - 2 - 1 - 1; // gutter - bars - len/index swap - 1 for spacing below
+			// pad coords to render, shifted to ensure our focused cell is visible
 			int rp_shift_c = 0;
 			int x_overhang_amt = (focus_cell_c_pos + focus_cell_c_width + 3) - rp_width; // plus 3 for spacing + vert bar divider
 			if (x_overhang_amt > 0)
@@ -1007,9 +1057,12 @@ void run_db_interact(MYSQL *con) {
 			int y_overhang_amt = focus_cell_r_pos - rp_height;
 			if (y_overhang_amt > 0)
 				rp_shift_r = y_overhang_amt;
-			int rp_y = QUERY_WIN_H + 1;
-			int rp_x = tbl_render_w + 1 + 2 + 1;
-			prefresh(result_pad, rp_shift_r,rp_shift_c, rp_y,rp_x, sy-3,sx-1); // with gutter spacing
+			// screen coords to render at, top left and bottom right
+			int scrn_y = QUERY_WIN_H + 1;
+			int scrn_x = tbl_render_w + 1 + 2 + 1;
+			int scrn_y_end = sy-3;
+			int scrn_x_end = sx-1;
+			prefresh(result_pad, rp_shift_r,rp_shift_c, scrn_y,scrn_x, scrn_y_end,scrn_x_end);
 
 
 			////////////////////////////////////////////
