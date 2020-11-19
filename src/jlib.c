@@ -169,7 +169,15 @@ void wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
 ///////////////////////////////////////
 // NCURSES FUNCTIONS START
 
-void nc_text_editor(WINDOW *window, char *buffer, int buffer_len) {
+void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+	nc_text_editor(pad, buffer, buffer_len, true, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+}
+
+void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len) {
+	nc_text_editor(win, buffer, buffer_len, false, 0, 0, 0, 0, 0, 0);
+}
+
+void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
 	curs_set(1);
 
 	// beg and end are screen coords of editor window
@@ -327,7 +335,12 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len) {
 				if (key == KEY_DC) { // forward delete
 					wdelch(window);
 				}
-				wrefresh(window);
+
+				if (!is_pad)
+					wrefresh(window);
+				else
+					prefresh(window, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+
 				getyx(window, cury,curx);
 				cury += begy; curx += begx;
 				break;

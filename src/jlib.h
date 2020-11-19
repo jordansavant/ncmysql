@@ -89,7 +89,9 @@ void strlines(int m, int n, char words[m][n], int sentence_size, int o, int p, c
 void wordwrap(const char *text, int size, void (*on_line)(const char *line));
 
 // NCURSES FUNCTIONS
-void nc_text_editor(WINDOW *window, char *buffer, int buffer_len);
+void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int src_x_end);
+void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len);
+void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int src_x_end);
 int nc_strtrimlen(chtype *buff, int size);
 int nc_cutline(WINDOW* win, chtype *buff, int startpos, int len);
 void nc_paste(WINDOW* win, chtype *buff); // expects null terminated buff

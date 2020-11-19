@@ -99,6 +99,7 @@ enum INTERACT_STATE {
 	INTERACT_STATE_TABLE_LIST,
 	INTERACT_STATE_QUERY,
 	INTERACT_STATE_RESULTS,
+	INTERACT_STATE_RESULTS_EDIT_CELL,
 };
 enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
 
@@ -108,12 +109,19 @@ enum QUERY_STATE {
 };
 enum QUERY_STATE query_state = QUERY_STATE_COMMAND;
 
+enum RESULT_STATE {
+	RESULT_STATE_NAVIGATE,
+	RESULT_STATE_EDIT_CELL,
+};
+enum RESULT_STATE result_state = RESULT_STATE_NAVIGATE;
+
 // GLOBAL WINDOWS
 WINDOW* error_window;
 WINDOW* cmd_window;
 WINDOW* str_window;
 WINDOW* query_window;
 WINDOW* result_pad;
+WINDOW* cell_pad;
 #define ERR_WIN_W	48
 #define ERR_WIN_H	12
 #define QUERY_WIN_H	12
@@ -224,6 +232,7 @@ void app_setup() {
 	cmd_window = newwin(0,0,0,0);
 	query_window = newwin(0,0,0,0);
 	result_pad = newpad(1,1);
+	cell_pad = newpad(1,1);
 
 	app_ui_layout();
 
@@ -234,6 +243,7 @@ void app_setup() {
 }
 
 void app_teardown() {
+	delwin(cell_pad);
 	delwin(result_pad);
 	delwin(query_window);
 	delwin(str_window);
@@ -645,7 +655,6 @@ bool get_focus_data(char *buffer, int len) {
 	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
 		return false;
 	if (focus_cell_r == 0) {
-		// TODO get header field data
 		mysql_field_seek(the_result, focus_cell_c);
 		MYSQL_FIELD *fh = mysql_fetch_field(the_result);
 		strncpy(buffer, fh->name, len - 1);
@@ -658,6 +667,14 @@ bool get_focus_data(char *buffer, int len) {
 		buffer[len - 1] = '\0';
 	}
 	return true;
+}
+
+MYSQL_FIELD* get_focus_field() {
+	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
+		return NULL;
+	mysql_field_seek(the_result, focus_cell_c);
+	MYSQL_FIELD *fh = mysql_fetch_field(the_result);
+	return fh;
 }
 
 int get_min_cell_size(MYSQL_FIELD *f) {
@@ -854,6 +871,54 @@ void render_result_row(int row_index, int *render_row) {
 		result_row++;
 		result_field = 0;
 	} // eo if row
+}
+
+
+void run_edit_focused_cell() {
+	// I have asked to edit a cell for the results
+	// lets do some checking to make sure I can do this
+
+	if (the_result && the_num_rows > 0) {
+
+		ui_clear_win(cell_pad);
+		// get the data
+		// TODO make the pad height variable to fit longer text
+		// TODO do different rendering widnows for field type, not all need to be full text editing, most are simple values
+
+		MYSQL_FIELD *f = get_focus_field();
+		if (f != NULL) {
+			int imaxf = f->max_length; // max length of data in row
+			char buffer[imaxf];
+			strclr(buffer, imaxf);
+			if (get_focus_data(buffer, imaxf)) {
+				// render the pad to edit
+				int sy,sx;
+				getmaxyx(stdscr, sy, sx);
+				wresize(cell_pad, sy - 2, sx - 4);
+				wmove(cell_pad, 0, 0);
+				waddstr(cell_pad, buffer);
+
+				// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+				clear();
+				refresh();
+				move(0, 2);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("EDITING");
+				wbkgd(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+				prefresh(cell_pad, 0, 0, 1, 2, sy - 1, sx - 2);
+
+				char edited[imaxf];
+				strclr(edited, imaxf);
+				nc_text_editor_pad(cell_pad, edited, imaxf, 0, 0, 1, 2, sy - 1, sx - 2);
+				xlog(edited);
+
+				do {
+					wrefresh(cell_pad);
+				} while (getch() != KEY_x);
+				clear(); refresh();
+			}
+		}
+	}
 }
 
 
@@ -1059,7 +1124,7 @@ void run_db_interact(MYSQL *con) {
 
 
 			// pads need to be refreshed after windows
-			// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:x-inscreen,w-onscreen)
+			// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:t-inscreen,x-onscreen)
 			int sx, sy;
 			getmaxyx(stdscr, sy, sx);
 			prefresh(tbl_pad, pad_row_offset,0, 0,0, tbl_render_h,tbl_render_w);
@@ -1214,7 +1279,7 @@ void run_db_interact(MYSQL *con) {
 						xlog("   QUERY_STATE_EDIT");
 
 						char buffer[QUERY_MAX];
-						nc_text_editor(query_window, buffer, QUERY_MAX);
+						nc_text_editor_win(query_window, buffer, QUERY_MAX);
 
 						// capture query
 						set_query(buffer);
@@ -1226,56 +1291,75 @@ void run_db_interact(MYSQL *con) {
 				}
 				case INTERACT_STATE_RESULTS: {
 					xlog("  INTERACT_STATE_RESULTS");
-					int key = getch();
-					switch (key) {
-						case KEY_x:
-							db_state = DB_STATE_END;
+
+					switch (result_state) {
+						case RESULT_STATE_NAVIGATE: {
+							xlog("   RESULT_STATE_NAVIGATE");
+							int key = getch();
+							switch (key) {
+								case KEY_x:
+									db_state = DB_STATE_END;
+									break;
+								case KEY_BTAB:
+								case KEY_TAB:
+									if (key == KEY_TAB)
+										interact_state = INTERACT_STATE_TABLE_LIST;
+									else
+										interact_state = INTERACT_STATE_QUERY;
+									result_rerender_full = true;
+									break;
+								case KEY_UP:
+									last_focus_cell_r = focus_cell_r;
+									focus_cell_r = maxi(0, focus_cell_r - 1);
+									result_rerender_focus = true;
+									break;
+								case KEY_DOWN:
+									last_focus_cell_r = focus_cell_r;
+									focus_cell_r = mini(the_num_rows, focus_cell_r + 1);
+									result_rerender_focus = true;
+									break;
+								case KEY_LEFT:
+									focus_cell_c = maxi(0, focus_cell_c - 1);
+									result_rerender_focus = true;
+									break;
+								case KEY_RIGHT:
+									focus_cell_c = mini(the_num_fields - 1, focus_cell_c + 1);
+									result_rerender_focus = true;
+									break;
+								case KEY_PPAGE: // pageup
+									last_focus_cell_r = focus_cell_r;
+									focus_cell_r = maxi(0, focus_cell_r - 20);
+									result_rerender_focus = true;
+									break;
+								case KEY_NPAGE:
+									last_focus_cell_r = focus_cell_r;
+									focus_cell_r = mini(the_num_rows, focus_cell_r + 20);
+									result_rerender_focus = true;
+									break;
+								case KEY_HOME:
+									focus_cell_c = 0;
+									result_rerender_focus = true;
+									break;
+								case KEY_END:
+									focus_cell_c = maxi(0, the_num_fields - 1);
+									result_rerender_focus = true;
+									break;
+								case KEY_e:
+									// open the editor for the selected cell
+									result_state = RESULT_STATE_EDIT_CELL;
+									break;
+							} // eo navigate KEY switch
 							break;
-						case KEY_BTAB:
-						case KEY_TAB:
-							if (key == KEY_TAB)
-								interact_state = INTERACT_STATE_TABLE_LIST;
-							else
-								interact_state = INTERACT_STATE_QUERY;
-							result_rerender_full = true;
-							break;
-						case KEY_UP:
-							last_focus_cell_r = focus_cell_r;
-							focus_cell_r = maxi(0, focus_cell_r - 1);
-							result_rerender_focus = true;
-							break;
-						case KEY_DOWN:
-							last_focus_cell_r = focus_cell_r;
-							focus_cell_r = mini(the_num_rows, focus_cell_r + 1);
-							result_rerender_focus = true;
-							break;
-						case KEY_LEFT:
-							focus_cell_c = maxi(0, focus_cell_c - 1);
-							result_rerender_focus = true;
-							break;
-						case KEY_RIGHT:
-							focus_cell_c = mini(the_num_fields - 1, focus_cell_c + 1);
-							result_rerender_focus = true;
-							break;
-						case KEY_PPAGE: // pageup
-							last_focus_cell_r = focus_cell_r;
-							focus_cell_r = maxi(0, focus_cell_r - 20);
-							result_rerender_focus = true;
-							break;
-						case KEY_NPAGE:
-							last_focus_cell_r = focus_cell_r;
-							focus_cell_r = mini(the_num_rows, focus_cell_r + 20);
-							result_rerender_focus = true;
-							break;
-						case KEY_HOME:
-							focus_cell_c = 0;
-							result_rerender_focus = true;
-							break;
-						case KEY_END:
-							focus_cell_c = maxi(0, the_num_fields - 1);
-							result_rerender_focus = true;
+						} // eo RESULT_STATE_NAVIGATE case
+						case RESULT_STATE_EDIT_CELL:
+							xlog("   RESULT_STATE_EDIT_CELL");
+
+							run_edit_focused_cell();
+
+							result_state = RESULT_STATE_NAVIGATE;
 							break;
 					}
+
 					break;
 				}
 			}
