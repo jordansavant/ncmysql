@@ -52,6 +52,8 @@ bool conn_established = false;
 bool db_selected = false;
 MYSQL *selected_mysql_conn = NULL;
 #define LOCALHOST "127.0.0.1"
+#define DB_NAME_LEN 64
+char db_name[DB_NAME_LEN];
 
 #define QUERY_MAX	4096
 char the_query[QUERY_MAX];
@@ -429,6 +431,11 @@ void on_db_select(char *database) {
 	//xlogf("db select %s\n", database);
 	db_select(selected_mysql_conn, database);
 	db_selected = true;
+
+	// set our db name
+	strclr(db_name, DB_NAME_LEN);
+	strncpy(db_name, database, DB_NAME_LEN - 1);
+	db_name[DB_NAME_LEN - 1] = '\0';
 }
 
 int menu_select_pos = 0;
@@ -616,7 +623,17 @@ void execute_query() {
 
 	// there is also the potential that the query changed the database with USE database
 	// so lets refresh tables when we execute
-	refresh_tables();
+
+	// we need to see if the database has changed from our previous selection
+	// and if so refresh the tables, we don't want to do this if the database
+	// has not changed as that can affect the table set
+	char buffer[DB_NAME_LEN];
+	db_get_db(selected_mysql_conn, buffer, DB_NAME_LEN);
+	if (strcmp(db_name, buffer) != 0) {
+		strncpy(db_name, buffer, DB_NAME_LEN - 1);
+		db_name[DB_NAME_LEN - 1] = '\0';
+		refresh_tables();
+	}
 
 	// reset our properties for the execution
 	result_rerender_full = true;

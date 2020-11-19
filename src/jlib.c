@@ -613,6 +613,19 @@ void db_select(MYSQL *con, char *db) {
 	}
 }
 
+void db_get_db(MYSQL *con, char *buffer, int len) {
+	int nf, nr, ar, ec;
+	MYSQL_RES *result = db_query(con, "SELECT DATABASE()", &nf, &nr, &ar, &ec);
+	if (!result && ec > 0) {
+		strclr(buffer, len);
+		return;
+	}
+	MYSQL_ROW row = mysql_fetch_row(result);
+	strncpy(buffer, row[0], len - 1);
+	buffer[len - 1] = '\0';
+	return;
+}
+
 int col_size(MYSQL_RES* result, int index) {
 	MYSQL_ROW row;
 	mysql_data_seek(result, 0);
