@@ -883,6 +883,7 @@ void run_edit_focused_cell() {
 		ui_clear_win(cell_pad);
 		// get the data
 		// TODO make the pad height variable to fit longer text
+		// TODO how do we get and edit a value based on PRIMARY key, what if there isnt one?
 		// TODO do different rendering widnows for field type, not all need to be full text editing, most are simple values
 
 		MYSQL_FIELD *f = get_focus_field();
@@ -894,24 +895,45 @@ void run_edit_focused_cell() {
 				// render the pad to edit
 				int sy,sx;
 				getmaxyx(stdscr, sy, sx);
-				wresize(cell_pad, sy - 2, sx - 4);
+				wresize(cell_pad, sy - 4, sx - 4);
 				wmove(cell_pad, 0, 0);
 				waddstr(cell_pad, buffer);
 
-				// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
 				clear();
-				refresh();
-				move(0, 2);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("EDITING");
-				wbkgd(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
-				prefresh(cell_pad, 0, 0, 1, 2, sy - 1, sx - 2);
 
+				attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
+				// top and left
+				move(0, 0);
+				vline(' ', sy); // l1
+				move(0, 1);
+				vline(' ', sy); // l2
+				move(0, 2);
+				hline(' ', sx - 4); // top
+				// bottom and right
+				move(0, sx - 1);
+				vline(' ', sy); // r1
+				move(0, sx - 2);
+				vline(' ', sy); // r2
+				move(sy - 1, 2);
+				hline(' ', sx - 4); // bottom
+				refresh();
+
+				move(0, 2);
+				addstr("EDITING");
+
+				// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+				wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+				//wbkgd(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+				int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-1, scr_x_end=sx-3;
+				prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+
+				xlog(buffer);
 				char edited[imaxf];
 				strclr(edited, imaxf);
-				nc_text_editor_pad(cell_pad, edited, imaxf, 0, 0, 1, 2, sy - 1, sx - 2);
+				nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				xlog(edited);
 
+				// TODO confirm to save values
 				do {
 					wrefresh(cell_pad);
 				} while (getch() != KEY_x);
