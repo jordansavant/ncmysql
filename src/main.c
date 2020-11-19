@@ -950,6 +950,7 @@ void run_edit_focused_cell() {
 				nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				xlog(edited);
 
+				xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'", "tablename", "field", edited, "prikey", "prival");
 				// TODO confirm to save values
 				do {
 					wrefresh(cell_pad);
