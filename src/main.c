@@ -1032,7 +1032,7 @@ void run_db_interact(MYSQL *con) {
 					}
 
 					// command bar
-					display_cmd("TABLES", "s/enter:select-100 | d:describe | tab:next | x:close");
+					display_cmd("TABLES", "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
@@ -1143,6 +1143,14 @@ void run_db_interact(MYSQL *con) {
 								mysql_data_seek(tbl_result, tbl_index);
 								MYSQL_ROW r = mysql_fetch_row(tbl_result);
 								set_queryf("DESCRIBE %s", r[0]);
+								execute_query();
+							}
+							break;
+						case KEY_k:
+							if (tbl_result && tbl_count > 0) {
+								mysql_data_seek(tbl_result, tbl_index);
+								MYSQL_ROW r = mysql_fetch_row(tbl_result);
+								set_queryf("SHOW KEYS FROM %s", r[0]);
 								execute_query();
 							}
 							break;
