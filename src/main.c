@@ -905,7 +905,7 @@ void run_edit_focused_cell() {
 
 		MYSQL_FIELD *f = get_focus_field();
 		if (f != NULL) {
-			int imaxf = f->max_length; // max length of data in row
+			int imaxf = f->max_length + 1; // max length of data in row
 			char buffer[imaxf];
 			strclr(buffer, imaxf);
 			if (get_focus_data(buffer, imaxf)) {
