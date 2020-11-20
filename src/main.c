@@ -895,7 +895,7 @@ void run_edit_focused_cell() {
 	// I have asked to edit a cell for the results
 	// lets do some checking to make sure I can do this
 
-	if (the_result && the_num_rows > 0) {
+	if (the_result && the_num_rows > 0 && focus_cell_r > 0) {
 
 		ui_clear_win(cell_pad);
 		// get the data
@@ -920,42 +920,66 @@ void run_edit_focused_cell() {
 
 				attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
 				// top and left
-				move(0, 0);
-				vline(' ', sy); // l1
-				move(0, 1);
-				vline(' ', sy); // l2
-				move(0, 2);
-				hline(' ', sx - 4); // top
+				move(0, 0); vline(' ', sy - 1); // l1
+				move(0, 1); vline(' ', sy - 1); // l2
+				move(0, 2); hline(' ', sx - 4); // top
 				// bottom and right
-				move(0, sx - 1);
-				vline(' ', sy); // r1
-				move(0, sx - 2);
-				vline(' ', sy); // r2
-				move(sy - 1, 2);
-				hline(' ', sx - 4); // bottom
+				move(0, sx - 1); vline(' ', sy - 1); // r1
+				move(0, sx - 2); vline(' ', sy - 1); // r2
+				move(sy - 2, 2); hline(' ', sx - 4); // bottom
 				refresh();
 
-				move(0, 2);
-				addstr("EDITING");
-
-				// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
-				wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-				//wbkgd(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
-				int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-1, scr_x_end=sx-3;
-				prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-
-				xlog(buffer);
 				char edited[imaxf];
-				strclr(edited, imaxf);
-				nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-				xlog(edited);
+				int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
+				enum M {
+					TEXT_EDITOR,
+					CONFIRM
+				};
+				enum M mode = TEXT_EDITOR;
+				bool editing=true;
+				while (editing) {
+					switch (mode) {
+						case TEXT_EDITOR: {
+							xlog("   - TEXT_EDITOR");
+							display_cmd("EDITING", "ctrl+x/esc:no-edit");
 
-				xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'", "tablename", "field", edited, "prikey", "prival");
-				// TODO confirm to save values
-				do {
-					wrefresh(cell_pad);
-				} while (getch() != KEY_x);
-				clear(); refresh();
+							// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+							wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+							prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+
+							xlog(buffer);
+							strclr(edited, imaxf);
+							wmove(cell_pad, 0, 0);
+							nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+							xlogf("[%s]\n", edited);
+
+							mode = CONFIRM;
+							break;
+						}
+						case CONFIRM:
+							xlog("   - CONFIRM");
+							display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
+							switch (getch()) {
+								case KEY_e:
+									mode = TEXT_EDITOR;
+									break;
+								case KEY_y:
+									// TODO SAVE VALUE and quit
+									xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'", "tablename", "field", edited, "prikey", "prival");
+									editing = false;
+									clear();
+									refresh();
+									break;
+								case KEY_n:
+								case KEY_x:
+									editing = false;
+									clear();
+									refresh();
+									break;
+							}
+							break;
+					}
+				}
 			}
 		}
 	}
