@@ -612,7 +612,7 @@ void set_queryf(char *format, ...) {
 int calc_result_pad_width();
 int calc_result_pad_height();
 
-void execute_query() {
+void execute_query(bool clear) {
 	int errcode;
 	xlog(the_query);
 	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &errcode);
@@ -649,12 +649,19 @@ void execute_query() {
 	// reset our properties for the execution
 	result_rerender_full = true;
 	result_rerender_focus = false;
-	last_focus_cell_r = 0;
-	focus_cell_r = 0;
-	focus_cell_c = 0;
-	focus_cell_c_width = 0;
-	focus_cell_c_pos = 0;
-	focus_cell_r_pos = 0;
+
+	if (clear) {
+		last_focus_cell_r = 0;
+		focus_cell_r = 0;
+		focus_cell_c = 0;
+		focus_cell_c_width = 0;
+		focus_cell_c_pos = 0;
+		focus_cell_r_pos = 0;
+	} else {
+		last_focus_cell_r = mini(last_focus_cell_r, the_num_rows + 1 - 1);
+		focus_cell_r = mini(focus_cell_r, the_num_rows + 1 - 1); // +1 for header row, -1 to make index isntead osize
+		focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
+	}
 }
 
 void clear_query() {
@@ -1026,6 +1033,8 @@ void run_edit_focused_cell() {
 												if (!result && ec > 0) { // inserts have null responses
 													display_error(mysql_error(selected_mysql_conn));
 												}
+												// refresh result query
+												execute_query(false);
 												editing = false;
 												clear();
 												refresh();
@@ -1346,7 +1355,7 @@ void run_db_interact(MYSQL *con) {
 								mysql_data_seek(tbl_result, tbl_index);
 								MYSQL_ROW r = mysql_fetch_row(tbl_result);
 								set_queryf("DESCRIBE %s", r[0]);
-								execute_query();
+								execute_query(true);
 							}
 							break;
 						case KEY_k:
@@ -1354,7 +1363,7 @@ void run_db_interact(MYSQL *con) {
 								mysql_data_seek(tbl_result, tbl_index);
 								MYSQL_ROW r = mysql_fetch_row(tbl_result);
 								set_queryf("SHOW KEYS FROM %s", r[0]);
-								execute_query();
+								execute_query(true);
 							}
 							break;
 						case KEY_s:
@@ -1363,7 +1372,7 @@ void run_db_interact(MYSQL *con) {
 								mysql_data_seek(tbl_result, tbl_index);
 								MYSQL_ROW r = mysql_fetch_row(tbl_result);
 								set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
-								execute_query();
+								execute_query(true);
 							}
 							break;
 						}
@@ -1387,7 +1396,7 @@ void run_db_interact(MYSQL *con) {
 						int key = getch();
 						switch (key) {
 							case KEY_RETURN:
-								execute_query();
+								execute_query(true);
 								break;
 							case KEY_x:
 								// Exit database editor
