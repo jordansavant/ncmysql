@@ -719,8 +719,12 @@ bool get_focus_data(char *buffer, int len) {
 	} else {
 		mysql_data_seek(the_result, focus_cell_r - 1);
 		MYSQL_ROW row = mysql_fetch_row(the_result);
-		strncpy(buffer, row[focus_cell_c], len - 1);
-		buffer[len - 1] = '\0';
+		if (row[focus_cell_c] != NULL && strlen(row[focus_cell_c]) > 0) {
+			strncpy(buffer, row[focus_cell_c], len - 1);
+			buffer[len - 1] = '\0';
+			return true;
+		}
+		return false;
 	}
 	return true;
 }
@@ -1261,6 +1265,8 @@ void run_db_interact(MYSQL *con) {
 					char buffer[256];
 					if (get_focus_data(buffer, 256))
 						display_str(buffer);
+					else
+						display_str("");
 
 					// command bar
 					display_cmd("RESULTS", "tab:next | x:close");
