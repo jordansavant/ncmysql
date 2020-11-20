@@ -1015,14 +1015,22 @@ void run_edit_focused_cell() {
 											case KEY_e:
 												mode = TEXT_EDITOR;
 												break;
-											case KEY_y:
+											case KEY_y: {
 												// TODO SAVE VALUE and quit
 												// TODO we must deal with escaping single quotes
-												xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, edited, primary_key, primary_val);
+												// execute query in the background, then we need to refresh the existing query
+												int nf, nr, ar, ec;
+												MYSQL_RES *result = db_queryf(
+														selected_mysql_conn, &nf, &nr, &ar, &ec,
+														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, edited, primary_key, primary_val);
+												if (!result && ec > 0) { // inserts have null responses
+													display_error(mysql_error(selected_mysql_conn));
+												}
 												editing = false;
 												clear();
 												refresh();
 												break;
+											}
 											case KEY_n:
 											case KEY_x:
 												editing = false;
