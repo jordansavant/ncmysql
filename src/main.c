@@ -101,7 +101,6 @@ enum INTERACT_STATE {
 	INTERACT_STATE_TABLE_LIST,
 	INTERACT_STATE_QUERY,
 	INTERACT_STATE_RESULTS,
-	INTERACT_STATE_RESULTS_EDIT_CELL,
 };
 enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
 
@@ -1823,7 +1822,7 @@ int main(int argc, char **argv) {
 						xlogf("- CHILD TUNNEL ATTEMPTS ON %d\n", s_port);
 						char buffer[256];
 						snprintf(buffer, 256,
-								"ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d -o ExitOnForwardFailure=yes %s sleep 2",
+								"ssh -oStrictHostKeyChecking=no -fL :%d:%s:%d -o ExitOnForwardFailure=yes %s sleep 2 > /dev/null 2>&1",
 								s_port, app_con->host, app_con->iport, app_con->ssh_tunnel);
 						int sys_exit = system(buffer);
 						int ssh_exit = WEXITSTATUS(sys_exit);
