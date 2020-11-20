@@ -577,7 +577,13 @@ MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
 	return result;
 }
 
-MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode) {
+MYSQL_RES* db_queryf(MYSQL *con, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode, char *format, ...) {
+	char query[2056]; // max query size hope we dont go over this
+	va_list argptr;
+	va_start(argptr, format);
+	vsprintf(query, format, argptr);
+	va_end(argptr);
+
 	if ((*errcode = mysql_query(con, query))) {
 		*num_fields = 0;
 		*num_rows = 0;
@@ -607,6 +613,10 @@ MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int
 	return result;
 }
 
+MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode) {
+	return db_queryf(con, num_fields, num_rows, num_affect_rows, errcode, "%s", query);
+}
+
 void db_select(MYSQL *con, char *db) {
 	if (mysql_select_db(con, db)) {
 		die(mysql_error(con));
@@ -624,6 +634,31 @@ void db_get_db(MYSQL *con, char *buffer, int len) {
 	strncpy(buffer, row[0], len - 1);
 	buffer[len - 1] = '\0';
 	return;
+}
+
+bool db_get_primary_key(MYSQL *con, char *table, char *buffer, int len) {
+	int nf, nr, ar, ec;
+	MYSQL_RES *result = db_queryf(con, &nf, &nr, &ar, &ec, "SHOW KEYS FROM `%s` WHERE `Key_name` = 'PRIMARY'", table);
+	if (!result && ec > 0) {
+		strclr(buffer, len);
+		return false;
+	}
+	// loop over fields until one is found called Column_name
+	MYSQL_ROW row = mysql_fetch_row(result);
+	if (row) {
+		MYSQL_FIELD *f; int c=0;
+		mysql_field_seek(result, 0);
+		while ((f = mysql_fetch_field(result))) {
+			if (strcmp(f->name, "Column_name") == 0) {
+				strncpy(buffer, row[c], len - 1);
+				buffer[len - 1] = '\0';
+				return true;
+			}
+			c++;
+		}
+	}
+	strclr(buffer, len);
+	return false;
 }
 
 int col_size(MYSQL_RES* result, int index) {

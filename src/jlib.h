@@ -115,9 +115,11 @@ void ui_anchor_center(WINDOW *win, int rows, int cols, int yoff, int xoff);
 // MYSQL FUNCTIONS
 void die(const char *msg); // must be defined in consuming code
 MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows);
+MYSQL_RES* db_queryf(MYSQL *con, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode, char *format, ...);
 MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode);
 void db_select(MYSQL *con, char *db);
 void db_get_db(MYSQL* con, char *buff, int len);
+bool db_get_primary_key(MYSQL *con, char *table, char *buffer, int len);
 int col_size(MYSQL_RES* result, int index);
 
 #endif

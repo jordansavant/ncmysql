@@ -279,17 +279,28 @@ void display_cmd(char *mode, char *cmd) {
 	wrefresh(cmd_window);
 }
 
-void display_str(char *str) {
+void display_strf(char *format, ...) {
 	int sx, sy;
 	getmaxyx(stdscr, sy, sx);
-	wbkgd(str_window, COLOR_PAIR(COLOR_BLACK_WHITE));
+	char str[sx];
+	strclr(str, sx);
 
+	va_list argptr;
+	va_start(argptr, format);
+	vsnprintf(str, sx - 1, format, argptr);
+	va_end(argptr);
+
+	wbkgd(str_window, COLOR_PAIR(COLOR_BLACK_WHITE));
 	wmove(str_window, 0, 0);
 	wclrtoeol(str_window);
 	wattrset(str_window, COLOR_PAIR(COLOR_BLACK_WHITE) | A_BOLD);
 	waddstr(str_window, str);
 
 	wrefresh(str_window);
+}
+
+void display_str(char *str) {
+	display_strf("%s", str);
 }
 
 int errlinepos = 0;
@@ -667,6 +678,28 @@ void clear_query() {
 	ui_clear_win(result_pad);
 }
 
+bool get_focus_row_val(char *fieldname, char *buffer, int len) {
+	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
+		return false;
+	if (focus_cell_r == 0) {
+		return false;
+	} else {
+		mysql_data_seek(the_result, focus_cell_r - 1);
+		MYSQL_ROW row = mysql_fetch_row(the_result);
+		MYSQL_FIELD *f; int c=0;
+		mysql_field_seek(the_result, 0);
+		while ((f = mysql_fetch_field(the_result))) {
+			if (strcmp(f->name, fieldname) == 0) {
+				strncpy(buffer, row[c], len - 1);
+				buffer[len - 1] = '\0';
+				return true;
+			}
+			c++;
+		}
+		return false;
+	}
+	return false;
+}
 
 bool get_focus_data(char *buffer, int len) {
 	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
@@ -901,88 +934,121 @@ void run_edit_focused_cell() {
 		// get the data
 		// TODO make the pad height variable to fit longer text
 		// TODO how do we get and edit a value based on PRIMARY key, what if there isnt one?
-		// TODO do different rendering widnows for field type, not all need to be full text editing, most are simple values
+
 
 		MYSQL_FIELD *f = get_focus_field();
 		if (f != NULL) {
-			int imaxf = f->max_length + 1; // max length of data in row
-			char buffer[imaxf];
-			strclr(buffer, imaxf);
-			if (get_focus_data(buffer, imaxf)) {
-				// render the pad to edit
-				int sy,sx;
-				getmaxyx(stdscr, sy, sx);
-				wresize(cell_pad, sy - 4, sx - 4);
-				wmove(cell_pad, 0, 0);
-				waddstr(cell_pad, buffer);
 
-				clear();
+			if (f->table) {
+				// Get primary key data: key name, key value for this row
+				// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
+				// get field value for "Column_name"
+				// is this possible? we cant actually edit cells from SELECT results
+				char primary_key[64];
+				strclr(primary_key, 64);
+				bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
 
-				attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
-				// top and left
-				move(0, 0); vline(' ', sy - 1); // l1
-				move(0, 1); vline(' ', sy - 1); // l2
-				move(0, 2); hline(' ', sx - 4); // top
-				// bottom and right
-				move(0, sx - 1); vline(' ', sy - 1); // r1
-				move(0, sx - 2); vline(' ', sy - 1); // r2
-				move(sy - 2, 2); hline(' ', sx - 4); // bottom
-				refresh();
+				if (pk_found) {
 
-				char edited[imaxf];
-				int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
-				enum M {
-					TEXT_EDITOR,
-					CONFIRM
-				};
-				enum M mode = TEXT_EDITOR;
-				bool editing=true;
-				while (editing) {
-					switch (mode) {
-						case TEXT_EDITOR: {
-							xlog("   - TEXT_EDITOR");
-							display_cmd("EDITING", "ctrl+x/esc:no-edit");
+					// Get primary key value from this row of data...
+					char primary_val[256];
+					strclr(primary_val, 256);
+					bool pk_val_found = get_focus_row_val(primary_key, primary_val, 256);
+					if (pk_val_found) {
 
-							// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
-							wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-							prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-
-							xlog(buffer);
-							strclr(edited, imaxf);
+						int imaxf = f->max_length + 1; // max length of data in row
+						char buffer[imaxf];
+						strclr(buffer, imaxf);
+						if (get_focus_data(buffer, imaxf)) {
+							// render the pad to edit
+							int sy,sx;
+							getmaxyx(stdscr, sy, sx);
+							wresize(cell_pad, sy - 2, sx);
+							wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 							wmove(cell_pad, 0, 0);
-							nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-							xlogf("[%s]\n", edited);
+							waddstr(cell_pad, buffer);
 
-							mode = CONFIRM;
-							break;
-						}
-						case CONFIRM:
-							xlog("   - CONFIRM");
-							display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
-							switch (getch()) {
-								case KEY_e:
-									mode = TEXT_EDITOR;
-									break;
-								case KEY_y:
-									// TODO SAVE VALUE and quit
-									xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'", "tablename", "field", edited, "prikey", "prival");
-									editing = false;
-									clear();
-									refresh();
-									break;
-								case KEY_n:
-								case KEY_x:
-									editing = false;
-									clear();
-									refresh();
-									break;
-							}
-							break;
-					}
-				}
-			}
-		}
-	}
+							clear();
+
+							//attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
+							// top and left
+							//move(0, 0); vline(' ', sy - 2); // l1
+							//move(0, 1); vline(' ', sy - 2); // l2
+							//move(0, 2); hline(' ', sx - 4); // top
+							// right, (bottom is display_str)
+							//move(0, sx - 1); vline(' ', sy - 2); // r1
+							//move(0, sx - 2); vline(' ', sy - 2); // r2
+							refresh();
+
+							char edited[imaxf];
+							//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
+							int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
+							enum M {
+								TEXT_EDITOR,
+								CONFIRM
+							};
+							enum M mode = TEXT_EDITOR;
+							bool editing=true;
+							while (editing) {
+								switch (mode) {
+									case TEXT_EDITOR: {
+										xlog("   - TEXT_EDITOR");
+										display_strf("UPDATE %s SET %s='%%s' WHERE %s='%s'", f->table, f->name, primary_key, primary_val);
+										display_cmd("EDITING", "ctrl+x/esc:no-edit");
+
+										// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+										prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+
+										xlog(buffer);
+										strclr(edited, imaxf);
+										wmove(cell_pad, 0, 0);
+										nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+										xlogf("[%s]\n", edited);
+
+										mode = CONFIRM;
+										break;
+									}
+									case CONFIRM:
+										xlog("   - CONFIRM");
+										display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
+										switch (getch()) {
+											case KEY_e:
+												mode = TEXT_EDITOR;
+												break;
+											case KEY_y:
+												// TODO SAVE VALUE and quit
+												// TODO we must deal with escaping single quotes
+												xlogf("UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, edited, primary_key, primary_val);
+												editing = false;
+												clear();
+												refresh();
+												break;
+											case KEY_n:
+											case KEY_x:
+												editing = false;
+												clear();
+												refresh();
+												break;
+										}
+										break;
+								} // eo mode switch
+							} // eo edit loop
+						} else {
+							display_error("Unable to fetch field contents for editing");
+						} // eo if contents
+					} else {
+						display_error("No primary key value could be determined for the selected row");
+					} // eo if pk val
+				} else {
+					display_error("No primary key could be determined for this field's table");
+				} // eo if primay key
+			} else {
+				display_error("Unable to determine table associated with this result field");
+			} // eo if table
+		} else {
+			display_error("Unable to locate field");
+		} // eo if field
+	} // eo if result
 }
 
 
@@ -1452,6 +1518,7 @@ void run_db_interact(MYSQL *con) {
 // - rethink "die" statements in sqlops
 // - text editor needs qol work
 // - cell editor, col sorter
+// - we must escape single quotes in Query Editor and Cell Editor
 // - what if someone runs "USE DATABASE()" in the sql editor?
 // - deal with fubard CSV values in connection file (strtok splodes) (optional tunnel etc)
 
