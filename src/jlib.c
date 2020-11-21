@@ -161,6 +161,43 @@ void wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
 	}
 }
 
+/**
+ * Takes a line and \0 terminates the delimeters
+ * and returns a pointer to the position expected
+ * field_pos is the position, not index, eg "1" is first field
+ * TODO: does not handle escaped delimiters or quoted values
+ * TODO: could make it fancy like strtok and make delim a str of values
+ * This was built to replace scanning CSVs to overcome the limits of strtok:
+ * - if a blank value is present such as "foo;bar;;zan;" the empty entries are skipped
+ * - this is because strtok will scan for the first non-delimeter character as its starting position
+ */
+char* scantok(char *line, int field_pos, char delim) {
+	if (field_pos < 0)
+		return 0;
+
+	int i=0;
+	int scanpos=0;
+	char scanchar;
+	int inspected_pos = 0;
+	while (inspected_pos < field_pos) {
+
+		scanpos = i;
+		do {
+			scanchar = line[i];
+			i++;
+		} while (scanchar != '\n' && scanchar != '\0' && scanchar != delim);
+		//xlogf("terminate pos [%d]=%c\n", i-1, line[i-1]);
+		line[i-1] = '\0'; // replace delim with terminating character
+
+		inspected_pos++;
+	}
+
+	if (strlen(&line[scanpos]) == 0)
+		return NULL;
+
+	return &line[scanpos];
+}
+
 // STRING FUNCTIONS END
 ///////////////////////////////////////
 

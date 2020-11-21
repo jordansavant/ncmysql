@@ -1604,15 +1604,6 @@ int parseargs(int argc, char **argv) {
 	return 0;
 }
 
-const char* getfield(char* line, int num) {
-	const char* tok;
-	for (tok = strtok(line, ";"); tok && *tok; tok = strtok(NULL, ";\n")) {
-		if (!--num)
-			return tok;
-	}
-	return NULL;
-}
-
 char *scan_pass = NULL;
 int s_portmax = 2216;
 int s_port = 2200;
@@ -1724,11 +1715,9 @@ int main(int argc, char **argv) {
 					cli_error("unable to locate connection file and no connection arguments provided");
 				}
 
-				xlogf("reading file %s\n", arg_confile);
 				char line[1024];
 				int i = 0;
 				while (fgets(line, 1024, fp)) {
-					xlogf("read for conn %d\n", i);
 
 					// the getfield uses strtok which fubars the data so i copy the line for as many fields, not ideal
 					// also we put in the heap so substrings found have stable addresses
@@ -1739,25 +1728,33 @@ int main(int argc, char **argv) {
 					char *tmp_for_pass = strdup(line);
 					char *tmp_for_tunnel = strdup(line);
 
-					const char *f_name = getfield(tmp_for_name, 1);
-					const char *f_host = getfield(tmp_for_host, 2);
-					const char *f_port = getfield(tmp_for_port, 3);
-					const char *f_user = getfield(tmp_for_user, 4);
-					const char *f_pass = getfield(tmp_for_pass, 5);
-					const char *f_tunnel = getfield(tmp_for_tunnel, 6);
-					//xlogf("Fields %s %s %s %s %s %s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+					const char *f_name = scantok(tmp_for_name, 1, ';');
+					const char *f_host = scantok(tmp_for_host, 2, ';');
+					const char *f_port = scantok(tmp_for_port, 3, ';');
+					const char *f_user = scantok(tmp_for_user, 4, ';');
+					const char *f_pass = scantok(tmp_for_pass, 5, ';');
+					const char *f_tunnel = scantok(tmp_for_tunnel, 6, ';');
+					// xlogf("Fields:\n  name=%s\n  host=%s\n  port=%s\n  user=%s\n  pass=%s\n  tunnel=%s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
 
 					// TODO There are memory leaks coming from strdup
 					// even though we are running free on the app_conn property
-					app_con_count++;
-					app_cons[i]->isset = true;
-					app_cons[i]->name = strdup(f_name);
-					app_cons[i]->host = strdup(f_host);
-					app_cons[i]->port = strdup(f_port);
-					app_cons[i]->user = strdup(f_user);
-					app_cons[i]->pass = strdup(f_pass);
-					app_cons[i]->ssh_tunnel = strdup(f_tunnel);
-					app_cons[i]->iport = atoi(f_port);
+					if (f_name && f_host && f_user && f_pass) {
+						xlogf("setting connection entry %d\n", i);
+						app_con_count++;
+						app_cons[i]->isset = true;
+						app_cons[i]->name = strdup(f_name);
+						app_cons[i]->host = strdup(f_host);
+						if (f_port)
+							app_cons[i]->port = strdup(f_port);
+						app_cons[i]->user = strdup(f_user);
+						app_cons[i]->pass = strdup(f_pass);
+						if (f_tunnel)
+							app_cons[i]->ssh_tunnel = strdup(f_tunnel);
+						if (f_port)
+							app_cons[i]->iport = atoi(f_port);
+					} else {
+						xlogf("skipping connection entry %d\n", i);
+					}
 
 					free(tmp_for_pass);
 					free(tmp_for_name);

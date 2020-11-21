@@ -87,6 +87,7 @@ size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimt
 void strsplit(const char *text, char splitter, int m, int n, char words[m][n], int *wordlen);
 void strlines(int m, int n, char words[m][n], int sentence_size, int o, int p, char lines[o][p], int *linelen);
 void wordwrap(const char *text, int size, void (*on_line)(const char *line));
+char* scantok(char *line, int field_pos, char delim);
 
 // NCURSES FUNCTIONS
 void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int src_x_end);
