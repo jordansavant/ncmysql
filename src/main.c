@@ -1797,8 +1797,7 @@ int main(int argc, char **argv) {
 				// otherwise create a menu to display them
 
 				if (app_con_count == 1) {
-					//app_con = app_cons[0];
-					run_con_select();
+					app_con = app_cons[0];
 				} else {
 					run_con_select();
 				}
@@ -1946,7 +1945,10 @@ int main(int argc, char **argv) {
 				selected_mysql_conn = NULL;
 
 				conn_established = false;
-				app_state = APP_STATE_CONNECTION_SELECT;
+				if (app_con_count == 1)
+					app_state = APP_STATE_END; // if we ran with only one connection, nothing to choose from
+				else
+					app_state = APP_STATE_CONNECTION_SELECT; // if more than one connection option, prompt for it again
 				app_con = NULL;
 				break;
 
