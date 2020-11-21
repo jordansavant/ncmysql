@@ -1587,6 +1587,7 @@ void run_db_interact(MYSQL *con) {
 char *program_name;
 void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
+	fprintf(f, "  %s -i help\n", program_name);
 	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
 	fprintf(f, "  %s -f connection-file [-d delimeter=,]\n", program_name);
 }
@@ -1607,12 +1608,14 @@ void cli_error(char *err) {
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL;
 char arg_delimeter = ',';
+bool arg_info = false;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
 	// TODO help arg?
-	while ((c = getopt(argc, argv, "h:l:u:p:s:f:d:")) != -1) {
+	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:")) != -1) {
 		switch (c) {
+			case 'i': arg_info = true; break;
 			case 'h': arg_host = optarg; break;
 			case 'l': arg_port = optarg; break;
 			case 'u': arg_user = optarg; break;
@@ -1661,6 +1664,12 @@ int main(int argc, char **argv) {
 	if (parseargs(argc, argv)) {
 		return 1;
 	}
+
+	if (arg_info) {
+		cli_usage(stdout);
+		return 0;
+	}
+
 	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
 
 	bool run = true;
