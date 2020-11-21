@@ -21,6 +21,8 @@ Optionally an SSH host can be provided such as `user@host` and the MySQL connect
 Running with file flags `-fd` will read a CSV file of connections in the format: `name,host,port,user,pass,tunnel`.
 If no options are presented it will look within the executable directory for a `connections.csv` file.
 
+A debug log is placed in `logs/log` which you can view for run time information.
+
 ## building
 
 I have built this on Ubuntu and macOS High Sierra using Homebrew.
