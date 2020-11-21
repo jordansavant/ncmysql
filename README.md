@@ -43,5 +43,5 @@ Building on Homebrew (macOS High Sierra):
 
 - `brew install ncurses mysql`
 - compile only: `make macos` will place executable as `bin/main.out`
-- compile and run: `make macos-run or with args as `make ARGS="[args here]" macos-run`
+- compile and run: `make macos-run` or with args as `make ARGS="[args here]" macos-run`
 
