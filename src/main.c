@@ -289,6 +289,14 @@ void display_cmdf(char *mode, int arglen, ...) {
 	}
 	va_end(argptr);
 
+	// render title on right side
+	int tsz = strlen(app_con->host) + 1 + strlen(db_name);
+	char title[tsz + 1];
+	sprintf(title, "%s %s", app_con->host, db_name);
+	int size = strlen(title);
+	wmove(cmd_window, 0, sx - size);
+	waddstr(cmd_window, title);
+
 	wrefresh(cmd_window);
 }
 
