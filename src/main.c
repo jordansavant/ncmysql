@@ -1587,8 +1587,8 @@ void run_db_interact(MYSQL *con) {
 char *program_name;
 void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
-	fprintf(f, "  %s -h mysql-host [-l port] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
-	fprintf(f, "  %s -f connection-file\n", program_name);
+	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
+	fprintf(f, "  %s -f connection-file [-d delimeter=,]\n", program_name);
 }
 
 void cli_error(char *err) {
@@ -1606,11 +1606,12 @@ void cli_error(char *err) {
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
 char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL;
+char arg_delimeter = ',';
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
 	// TODO help arg?
-	while ((c = getopt(argc, argv, "h:l:u:p:s:f:")) != -1) {
+	while ((c = getopt(argc, argv, "h:l:u:p:s:f:d:")) != -1) {
 		switch (c) {
 			case 'h': arg_host = optarg; break;
 			case 'l': arg_port = optarg; break;
@@ -1618,6 +1619,7 @@ int parseargs(int argc, char **argv) {
 			case 'p': arg_pass = optarg; break;
 			case 's': arg_tunnel = optarg; break;
 			case 'f': arg_confile = optarg; break;
+			case 'd': arg_delimeter = optarg[0]; break;
 			case '?': // appears if unknown option when opterr=0
 				if (optopt == 'h')
 					cli_error("-h missing mysql-host");
@@ -1768,13 +1770,13 @@ int main(int argc, char **argv) {
 					char *tmp_for_pass = strdup(line);
 					char *tmp_for_tunnel = strdup(line);
 
-					const char *f_name = scantok(tmp_for_name, 1, ';');
-					const char *f_host = scantok(tmp_for_host, 2, ';');
-					const char *f_port = scantok(tmp_for_port, 3, ';');
-					const char *f_user = scantok(tmp_for_user, 4, ';');
-					const char *f_pass = scantok(tmp_for_pass, 5, ';');
-					const char *f_tunnel = scantok(tmp_for_tunnel, 6, ';');
-					// xlogf("Fields:\n  name=%s\n  host=%s\n  port=%s\n  user=%s\n  pass=%s\n  tunnel=%s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+					const char *f_name = scantok(tmp_for_name, 1, arg_delimeter);
+					const char *f_host = scantok(tmp_for_host, 2, arg_delimeter);
+					const char *f_port = scantok(tmp_for_port, 3, arg_delimeter);
+					const char *f_user = scantok(tmp_for_user, 4, arg_delimeter);
+					const char *f_pass = scantok(tmp_for_pass, 5, arg_delimeter);
+					const char *f_tunnel = scantok(tmp_for_tunnel, 6, arg_delimeter);
+					xlogf("Fields:\n  name=%s\n  host=%s\n  port=%s\n  user=%s\n  pass=%s\n  tunnel=%s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
 
 					// TODO There are memory leaks coming from strdup
 					// even though we are running free on the app_conn property
