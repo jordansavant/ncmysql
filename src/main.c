@@ -1589,7 +1589,7 @@ void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
 	fprintf(f, "  %s -i help\n", program_name);
 	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
-	fprintf(f, "  %s -f connection-file [-d delimeter=,]\n", program_name);
+	fprintf(f, "  %s -f connection-file=connections.csv [-d delimeter=,]\n", program_name);
 }
 
 void cli_error(char *err) {

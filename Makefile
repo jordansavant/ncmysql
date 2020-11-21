@@ -10,12 +10,14 @@ DEPS = src/pass.h src/jlib.h
 
 make: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS)
-
-osx: $(BUILD) $(DEPS)
-	gcc -I/usr/local/opt/ncurses/include -L/usr/local/opt/ncurses/lib $(BUILD) -o bin/main.out $(LIBS) && ./bin/main.out $(ARGS)
-
 run: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && ./bin/main.out $(ARGS)
+
+macos: $(BUILD) $(DEPS)
+	gcc -I/usr/local/opt/ncurses/include -L/usr/local/opt/ncurses/lib $(BUILD) -o bin/main.out $(LIBS)
+macos-run: $(BUILD) $(DEPS)
+	gcc -I/usr/local/opt/ncurses/include -L/usr/local/opt/ncurses/lib $(BUILD) -o bin/main.out $(LIBS) && ./bin/main.out $(ARGS)
+
 
 valgrind: $(BUILD) $(DEPS)
 	gcc -g -O0 $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && /usr/bin/valgrind --leak-check=full --show-leak-kinds=all --log-file=logs/valgrind --suppressions=valgrind.suppression ./bin/main.out $(ARGS)
