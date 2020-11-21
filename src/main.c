@@ -280,9 +280,12 @@ void display_cmdf(char *mode, int arglen, ...) {
 	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
 	va_list argptr;
 	va_start(argptr, arglen);
+	int pos = 12;
 	for (int i=0; i < arglen; i++) {
-		wmove(cmd_window, 0, 12 + i * 12);
-		waddstr(cmd_window, va_arg(argptr, char*));
+		char* cmd = va_arg(argptr, char*);
+		wmove(cmd_window, 0, pos);
+		waddstr(cmd_window, cmd);
+		pos += maxi(12, strlen(cmd) + 2);
 	}
 	va_end(argptr);
 
@@ -1030,7 +1033,7 @@ void run_edit_focused_cell() {
 									case TEXT_EDITOR: {
 										xlog("   - TEXT_EDITOR");
 										display_strf("UPDATE %s SET %s='%%s' WHERE %s='%s'", f->table, f->name, primary_key, primary_val);
-										display_cmd("EDITING", "ctrl+x/esc:done");
+										display_cmdf("EDITING", 1, "[^x][esc]=done");
 
 										// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
 										prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
@@ -1046,8 +1049,7 @@ void run_edit_focused_cell() {
 									}
 									case CONFIRM:
 										xlog("   - CONFIRM");
-										display_cmdf("SAVE?", 3, "e:edit", "y:yes", "n:no");
-										//display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
+										display_cmdf("SAVE?", 3, "[y]=yes", "[n]=no", "[e]=edit");
 										switch (getch()) {
 											case KEY_e:
 												mode = TEXT_EDITOR;
@@ -1280,7 +1282,7 @@ void run_db_interact(MYSQL *con) {
 					}
 
 					// command bar
-					display_cmd("TABLES", "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
+					display_cmdf("TABLES", 5, "[enter]=select-100", "[k]=keys", "[d]=describe", "[tab]=mode", "[x]=exit");// "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
@@ -1289,9 +1291,9 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
-						display_cmd("QUERY", "e/i:edit | enter:execute | del:clear | tab:next | x:close");
+						display_cmdf("QUERY", 5, "[e][i]=edit", "[enter]=execute", "[del]=clear", "[tab]=mode", "[x]=exit");// "e/i:edit | enter:execute | del:clear | tab:next | x:close");
 					else
-						display_cmd("EDIT QUERY", "ctrl+x/esc:no-edit | tab:next | x:close");
+						display_cmdf("EDIT QUERY", 1, "[^x/esc]=done");// "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
 				case INTERACT_STATE_RESULTS: {
 					// string bar (none)
@@ -1302,7 +1304,7 @@ void run_db_interact(MYSQL *con) {
 						display_str("");
 
 					// command bar
-					display_cmd("RESULTS", "tab:next | x:close");
+					display_cmdf("RESULTS", 2, "[tab]=mode", "[x]=exit");// "tab:next | x:close");
 					break;
 				}
 			}
@@ -1404,7 +1406,6 @@ void run_db_interact(MYSQL *con) {
 								execute_query(true);
 							}
 							break;
-						case KEY_s:
 						case KEY_RETURN: {
 							if (tbl_result && tbl_count > 0) {
 								mysql_data_seek(tbl_result, tbl_index);
