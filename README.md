@@ -16,7 +16,7 @@ The binary runs in two modes: one to directly connect to a host similar to the m
 Running with the `-i` flag will print the usage.
 
 Running with the host flags `-hlups` requires host and user minimally. If a password is not supplied a prompt will accept a password.
-Optionally an SSH host can be provided such as `user@host` and the MySQL connection will fork a system call to establish the SSH tunnel in port ranges of 2200-2216.
+Optionally an SSH host can be provided such as `user@host` and the program will fork a system call to establish the SSH tunnel in port ranges of 2200-2216 and use this tunnel to establish the MySQL connection.
 
 Running with file flags `-fd` will read a CSV file of connections in the format: `name,host,port,user,pass,tunnel`.
 If no options are presented it will look within the executable directory for a `connections.csv` file.
