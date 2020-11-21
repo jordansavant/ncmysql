@@ -1030,10 +1030,16 @@ void run_edit_focused_cell() {
 												// TODO SAVE VALUE and quit
 												// TODO we must deal with escaping single quotes
 												// execute query in the background, then we need to refresh the existing query
+												unsigned long e_imaxf = imaxf * 2 + 1; //https://dev.mysql.com/doc/c-api/8.0/en/mysql-real-escape-string-quote.html
+												char escaped[e_imaxf]; // escape string version
+												strclr(escaped, e_imaxf);
+												unsigned long p = mysql_real_escape_string_quote(selected_mysql_conn, escaped, edited, imaxf - 1, '\'');
+												//xlogf("EDITED: [%s]\n", edited);
+												//xlogf("ESCAPE: [%s]\n", escaped);
 												int nf, nr, ar, ec;
 												MYSQL_RES *result = db_queryf(
 														selected_mysql_conn, &nf, &nr, &ar, &ec,
-														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, edited, primary_key, primary_val);
+														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, escaped, primary_key, primary_val);
 												if (!result && ec > 0) { // inserts have null responses
 													display_error(mysql_error(selected_mysql_conn));
 												}
@@ -1542,7 +1548,7 @@ void run_db_interact(MYSQL *con) {
 // - text editor needs qol work
 // - cell editor, col sorter
 // - we must escape single quotes in Query Editor and Cell Editor
-// - make X go back to connection menu, not exit the application
+// - csv scanner will not do quotes or escaped delimiters, not sure i care
 
 char *program_name;
 void cli_usage(FILE* f) {
