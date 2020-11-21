@@ -183,6 +183,7 @@ bool ncurses_setup() {
 		endwin(); // cleanup
 		return false;
 	}
+	set_escdelay(100); // lower time to detect escape delay
 	curs_set(0); // hide cursor
 	noecho();
 	keypad(stdscr, true); // turn on F key listening
@@ -263,6 +264,30 @@ void die(const char *msg) {
 	exit(1);
 }
 
+
+void display_cmdf(char *mode, int arglen, ...) {
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+
+	// render mode
+	wmove(cmd_window, 0, 0);
+	wclrtoeol(cmd_window);
+	wattrset(cmd_window, COLOR_PAIR(COLOR_CYAN_BLACK) | A_BOLD);
+	waddstr(cmd_window, mode);
+	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
+
+	// render args
+	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
+	va_list argptr;
+	va_start(argptr, arglen);
+	for (int i=0; i < arglen; i++) {
+		wmove(cmd_window, 0, 12 + i * 12);
+		waddstr(cmd_window, va_arg(argptr, char*));
+	}
+	va_end(argptr);
+
+	wrefresh(cmd_window);
+}
 
 void display_cmd(char *mode, char *cmd) {
 	int sx, sy;
@@ -1005,7 +1030,7 @@ void run_edit_focused_cell() {
 									case TEXT_EDITOR: {
 										xlog("   - TEXT_EDITOR");
 										display_strf("UPDATE %s SET %s='%%s' WHERE %s='%s'", f->table, f->name, primary_key, primary_val);
-										display_cmd("EDITING", "ctrl+x/esc:no-edit");
+										display_cmd("EDITING", "ctrl+x/esc:done");
 
 										// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
 										prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
@@ -1021,7 +1046,8 @@ void run_edit_focused_cell() {
 									}
 									case CONFIRM:
 										xlog("   - CONFIRM");
-										display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
+										display_cmdf("SAVE?", 3, "e:edit", "y:yes", "n:no");
+										//display_cmd("SAVE?", "e:edit | n/x:no | y:yes");
 										switch (getch()) {
 											case KEY_e:
 												mode = TEXT_EDITOR;
@@ -1547,7 +1573,6 @@ void run_db_interact(MYSQL *con) {
 // - rethink "die" statements in sqlops
 // - text editor needs qol work
 // - cell editor, col sorter
-// - we must escape single quotes in Query Editor and Cell Editor
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
 
 char *program_name;
