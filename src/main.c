@@ -68,6 +68,7 @@ enum APP_STATE {
 	APP_STATE_START,
 	APP_STATE_ARGS_TO_CONNECTION,
 	APP_STATE_LOAD_CONNECTION_FILE,
+	APP_STATE_CONNECTIONS_PARSED,
 	APP_STATE_CONNECTION_SELECT,
 	APP_STATE_FORK_SSH_TUNNEL,
 	//APP_STATE_CONNECTION_CREATE,
@@ -1541,8 +1542,7 @@ void run_db_interact(MYSQL *con) {
 // - text editor needs qol work
 // - cell editor, col sorter
 // - we must escape single quotes in Query Editor and Cell Editor
-// - what if someone runs "USE DATABASE()" in the sql editor?
-// - deal with fubard CSV values in connection file (strtok splodes) (optional tunnel etc)
+// - make X go back to connection menu, not exit the application
 
 char *program_name;
 void cli_usage(FILE* f) {
@@ -1608,7 +1608,7 @@ char *scan_pass = NULL;
 int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
-	MYSQL *con = NULL;
+	selected_mysql_conn = NULL;
 
 	xlogopen("logs/log", "w+");
 	xlog("....... START .......");
@@ -1655,7 +1655,7 @@ int main(int argc, char **argv) {
 				// and file strings from the connection file
 				app_con_count++;
 				app_cons[0]->isset = true;
-				app_cons[0]->name = strdup("command args");
+				app_cons[0]->name = strdup(arg_host);
 				app_cons[0]->host = strdup(arg_host);
 				app_cons[0]->user = strdup(arg_user);
 
@@ -1686,7 +1686,7 @@ int main(int argc, char **argv) {
 				if (arg_tunnel)
 					app_cons[0]->ssh_tunnel = strdup(arg_tunnel);
 
-				app_state = APP_STATE_CONNECTION_SELECT;
+				app_state = APP_STATE_CONNECTIONS_PARSED;
 
 				break;
 
@@ -1768,25 +1768,37 @@ int main(int argc, char **argv) {
 
 				fclose(fp);
 
-				app_state = APP_STATE_CONNECTION_SELECT;
+				app_state = APP_STATE_CONNECTIONS_PARSED;
+
+				break;
+
+			case APP_STATE_CONNECTIONS_PARSED:
+				xlog("APP_STATE_CONNECTIONS_PARSED");
+
+				// All args and connections have been parsed from CLI or File
+				// However application and ncurses has not started
+				// This is the place to do that prior to starting the connection state machine
+
+				app_setup(); // setup ncurses control
+
+				if (app_con_count == 0) {
+					display_error("No connections defined");
+					app_state = APP_STATE_END;
+				} else {
+					app_state = APP_STATE_CONNECTION_SELECT;
+				}
 
 				break;
 
 			case APP_STATE_CONNECTION_SELECT:
 				xlogf("APP_STATE_CONNECTION_SELECT\n");
 
-				app_setup(); // setup ncurses control
-
 				// if only one connection then use it
 				// otherwise create a menu to display them
-				if (app_con_count == 0) {
-					display_error("No connections defined");
-					app_state = APP_STATE_END;
-					break;
-				}
 
 				if (app_con_count == 1) {
-					app_con = app_cons[0];
+					//app_con = app_cons[0];
+					run_con_select();
 				} else {
 					run_con_select();
 				}
@@ -1865,9 +1877,9 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_CONNECT %s@%s:%d\n", app_con->user, app_con->host, app_con->iport);
 
 				// create mysql connection
-				con = mysql_init(NULL);
-				if (con == NULL) {
-					display_error(mysql_error(con));
+				selected_mysql_conn = mysql_init(NULL);
+				if (selected_mysql_conn == NULL) {
+					display_error(mysql_error(selected_mysql_conn));
 					app_state = APP_STATE_END;
 					break;
 				}
@@ -1875,32 +1887,31 @@ int main(int argc, char **argv) {
 				// If we are connecting through an established tunnel, then target localhost at our local port
 				// otherwise connect to server naturally
 				unsigned int timeout = 3;
-				mysql_options(con, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+				mysql_options(selected_mysql_conn, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
 				if (app_con->ssh_tunnel)
-					con = mysql_real_connect(con, LOCALHOST, app_con->user, app_con->pass, NULL, s_port, NULL, 0);
+					selected_mysql_conn = mysql_real_connect(selected_mysql_conn, LOCALHOST, app_con->user, app_con->pass, NULL, s_port, NULL, 0);
 				else
-					con = mysql_real_connect(con, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
+					selected_mysql_conn = mysql_real_connect(selected_mysql_conn, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
 
-				if (con == NULL) {
-					display_error(mysql_error(con));
-					mysql_close(con);
+				if (selected_mysql_conn == NULL) {
+					display_error(mysql_error(selected_mysql_conn));
+					mysql_close(selected_mysql_conn);
 					app_state = APP_STATE_END;
 					break;
 				}
 
 				conn_established = true;
-				selected_mysql_conn = con;
 				app_state = APP_STATE_DB_SELECT;
 				break;
 
 			case APP_STATE_DB_SELECT:
 				xlogf("APP_STATE_DB_SELECT\n");
 				// show menu to select db for the connection
-				if (con != NULL) {
+				if (selected_mysql_conn != NULL) {
 					xlog("CON STILL PRESENT BEFORE DB SELECT");
-					xlog(mysql_get_host_info(con));
+					xlog(mysql_get_host_info(selected_mysql_conn));
 				}
-				run_db_select(con, app_con);
+				run_db_select(selected_mysql_conn, app_con);
 
 				break;
 
@@ -1917,7 +1928,7 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_DB_INTERACT\n");
 
 				// with a db selected lets run the selected db state
-				run_db_interact(con);
+				run_db_interact(selected_mysql_conn);
 
 				break;
 
@@ -1931,11 +1942,11 @@ int main(int argc, char **argv) {
 				xlogf("APP_STATE_DISCONNECT %s@%s\n", app_con->user, app_con->host);
 
 				// close connection
+				mysql_close(selected_mysql_conn);
 				selected_mysql_conn = NULL;
-				mysql_close(con);
 
 				conn_established = false;
-				app_state = APP_STATE_END;
+				app_state = APP_STATE_CONNECTION_SELECT;
 				app_con = NULL;
 				break;
 
