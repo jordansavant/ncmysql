@@ -74,6 +74,12 @@
 #define COLOR_BLACK_MAGENTA	20
 #define COLOR_BLACK_RED		21
 
+// LOG HELPERS
+void xlogopen(const char *location, char *mode);
+void xlogclose();
+void xlog(const char *msg);
+void xlogf(const char *format, ...);
+
 // MATH FUNCTIONS
 int maxi(int a, int b);
 int mini(int a, int b);

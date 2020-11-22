@@ -12,6 +12,7 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
+//////////////////////////////////////
 // DB CONNECTION INFORMATION
 // We need to rely on that these values, be them populated from args or from
 // file that the strings are malloc'd values
@@ -44,7 +45,6 @@ void free_conn(struct Connection *conn) {
 	free(conn->ssh_tunnel);
 }
 #define CONNECTION_COUNT 20
-//struct Connection **app_cons;
 struct Connection *app_con = NULL;
 struct Connection* app_cons[CONNECTION_COUNT];
 int app_con_count = 0;
@@ -63,7 +63,10 @@ bool result_rerender_full = true, result_rerender_focus = false;
 int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
 
+
+//////////////////////////////////////
 // STATE MACHINES
+
 enum APP_STATE {
 	APP_STATE_START,
 	APP_STATE_ARGS_TO_CONNECTION,
@@ -71,7 +74,6 @@ enum APP_STATE {
 	APP_STATE_CONNECTIONS_PARSED,
 	APP_STATE_CONNECTION_SELECT,
 	APP_STATE_FORK_SSH_TUNNEL,
-	//APP_STATE_CONNECTION_CREATE,
 	APP_STATE_CONNECT,
 	APP_STATE_DB_SELECT,
 	APP_STATE_DB_SELECT_END,
@@ -118,7 +120,10 @@ enum RESULT_STATE {
 };
 enum RESULT_STATE result_state = RESULT_STATE_NAVIGATE;
 
+
+//////////////////////////////////////
 // GLOBAL WINDOWS
+
 WINDOW* error_window;
 WINDOW* cmd_window;
 WINDOW* str_window;
@@ -138,41 +143,9 @@ MYSQL_RES* tbl_result = NULL;
 #define TBL_STR_FMT		"%-256s"
 #define TBL_LIST_W		32
 
-int W = 0;
-int H = 0;
 
-
-FILE* _fp;
-void xlogopen(const char *location, char *mode) {
-	_fp = fopen(location, mode);
-}
-void xlogclose() {
-	fclose(_fp);
-}
-void xlog(const char *msg) {
-	fprintf(_fp, "%s\n", msg);
-	fflush(_fp);
-}
-void xlogf(const char *format, ...) {
-	va_list argptr;
-	va_start(argptr, format);
-	vfprintf(_fp, format, argptr);
-	//fprintf(_fp, "\n");
-	va_end(argptr);
-	fflush(_fp);
-}
-void xlog_conn(struct Connection *con) {
-	xlogf("%s:%s@%s:%s/%d << %s\n",
-		con->user,
-		con->pass,
-		con->host,
-		con->port,
-		con->iport,
-		con->ssh_tunnel
-	 );
-}
-
-
+//////////////////////////////////////
+// APP SETUP METHODS
 
 bool ncurses_setup() {
 	// setup ncurses window
@@ -188,8 +161,6 @@ bool ncurses_setup() {
 	curs_set(0); // hide cursor
 	noecho();
 	keypad(stdscr, true); // turn on F key listening
-
-	getmaxyx(stdscr, H, W);
 	return true;
 }
 
@@ -266,6 +237,9 @@ void die(const char *msg) {
 }
 
 
+//////////////////////////////////////
+// WINDOW RENDER METHODS
+
 void display_cmdf(char *mode, int arglen, ...) {
 	int sx, sy;
 	getmaxyx(stdscr, sy, sx);
@@ -301,21 +275,6 @@ void display_cmdf(char *mode, int arglen, ...) {
 	wrefresh(cmd_window);
 }
 
-void display_cmd(char *mode, char *cmd) {
-	int sx, sy;
-	getmaxyx(stdscr, sy, sx);
-
-	wmove(cmd_window, 0, 0);
-	wclrtoeol(cmd_window);
-	wattrset(cmd_window, COLOR_PAIR(COLOR_CYAN_BLACK) | A_BOLD);
-	waddstr(cmd_window, mode);
-	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
-	wmove(cmd_window, 0, 12);
-	waddstr(cmd_window, cmd);
-
-	wrefresh(cmd_window);
-}
-
 void display_strf(char *format, ...) {
 	int sx, sy;
 	getmaxyx(stdscr, sy, sx);
@@ -345,6 +304,7 @@ void display_error_on_line(const char *line) {
 	wmove(error_window, 3 + errlinepos++, 2);
 	waddstr(error_window, line);
 };
+
 void display_error(const char *string) {
 	// clear all of the application
 	clear();
@@ -370,6 +330,9 @@ void display_error(const char *string) {
 	clear(); refresh();
 }
 
+
+//////////////////////////////////////
+// CONNECTION SELECT OPERATION
 
 bool con_selected = true;
 int con_select_index = 0;
@@ -479,7 +442,8 @@ void run_con_select() {
 }
 
 
-
+//////////////////////////////////////
+// DATABASE SELECT OPERATION
 
 void on_db_select(char *database) {
 	//xlogf("db select %s\n", database);
@@ -627,6 +591,9 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 }
 
 
+//////////////////////////////////////
+// TABLE AND QUERY EXECUTION OPERATIONS
+
 void refresh_tables() {
 
 	if (tbl_result != NULL)
@@ -762,7 +729,6 @@ bool get_focus_row_val(char *fieldname, char *buffer, int len) {
 	return false;
 }
 
-
 bool get_focus_data(char *buffer, int len, bool clean) {
 	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
 		return false;
@@ -845,6 +811,10 @@ int calc_result_pad_height() {
 	return the_num_rows + 1; // rows and header
 }
 
+
+//////////////////////////////////////
+// RESULT RENDER METHODS
+
 void render_result_divider() {
 	wattrset(result_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
 	waddch(result_pad, ' ');
@@ -897,7 +867,6 @@ void render_result_header(int *render_row) {
 	result_field = 0;
 	result_row++;
 }
-
 
 void render_result_row(int row_index, int *render_row) {
 
@@ -991,6 +960,9 @@ void render_result_row(int row_index, int *render_row) {
 	} // eo if row
 }
 
+
+//////////////////////////////////////
+// CELL INSPECTION METHODS
 
 void run_edit_focused_cell() {
 	// I have asked to edit a cell for the results
@@ -1137,7 +1109,6 @@ void run_edit_focused_cell() {
 	} // eo if result
 }
 
-
 void run_view_focused_cell() {
 	// I have asked to edit a cell for the results
 	// lets do some checking to make sure I can do this
@@ -1193,6 +1164,9 @@ void run_view_focused_cell() {
 }
 
 
+//////////////////////////////////////
+// MAIN STATE MACHINE FOR INTERACTING
+// WITH SELECTED DATABASE
 
 bool cell_sort_asc = true;
 void run_db_interact(MYSQL *con) {
@@ -1709,6 +1683,9 @@ void run_db_interact(MYSQL *con) {
 	}
 }
 
+
+//////////////////////////////////////
+// MAIN
 
 char *program_name;
 void cli_usage(FILE* f) {

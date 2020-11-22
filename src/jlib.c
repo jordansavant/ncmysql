@@ -8,6 +8,32 @@
 
 
 //////////////////////////////////////
+// LOG FUNCTIONS START
+
+FILE* _fp;
+void xlogopen(const char *location, char *mode) {
+	_fp = fopen(location, mode);
+}
+void xlogclose() {
+	fclose(_fp);
+}
+void xlog(const char *msg) {
+	fprintf(_fp, "%s\n", msg);
+	fflush(_fp);
+}
+void xlogf(const char *format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vfprintf(_fp, format, argptr);
+	va_end(argptr);
+	fflush(_fp);
+}
+
+// LOG FUNCTIONS END
+//////////////////////////////////////
+
+
+//////////////////////////////////////
 // MATH FUNCTIONS START
 
 int maxi(int a, int b) {
