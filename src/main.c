@@ -1006,6 +1006,7 @@ void run_edit_focused_cell() {
 				// get field value for "Column_name"
 				// is this possible? we cant actually edit cells from SELECT results
 				// TODO support the MUL key types where there are multiple values that are the primary key
+				// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
 				char primary_key[64];
 				strclr(primary_key, 64);
 				bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
@@ -1317,7 +1318,7 @@ void run_db_interact(MYSQL *con) {
 					}
 
 					// command bar
-					display_cmdf("TABLES", 5, "[enter]=select-100", "[k]=keys", "[d]=describe", "[tab]=mode", "[x]=exit");// "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
+					display_cmdf("TABLES", 6, "[enter]=select-100", "[k]=keys", "[d]=describe", "[c]=show-create", "[tab]=mode", "[x]=exit");// "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
 					break;
 				}
 				case INTERACT_STATE_QUERY:
@@ -1430,6 +1431,14 @@ void run_db_interact(MYSQL *con) {
 								mysql_data_seek(tbl_result, tbl_index);
 								MYSQL_ROW r = mysql_fetch_row(tbl_result);
 								set_queryf("DESCRIBE %s", r[0]);
+								execute_query(true);
+							}
+							break;
+						case KEY_c:
+							if (tbl_result && tbl_count > 0) {
+								mysql_data_seek(tbl_result, tbl_index);
+								MYSQL_ROW r = mysql_fetch_row(tbl_result);
+								set_queryf("SHOW CREATE TABLE %s", r[0]);
 								execute_query(true);
 							}
 							break;
@@ -1607,6 +1616,8 @@ void run_db_interact(MYSQL *con) {
 
 // TODO LIST
 // - rethink "die" statements in sqlops
+// - cell editor needs to support multiple primary keys
+// - show create table collapses the cell data, perhaps a "VIEW" mode for cell data thats a full screen takeover?
 // - text editor needs qol work
 // - cell editor, col sorter
 // - query history you can cycle through
