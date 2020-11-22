@@ -997,7 +997,6 @@ void run_edit_focused_cell() {
 		// TODO make the pad height variable to fit longer text
 		// TODO how do we get and edit a value based on PRIMARY key, what if there isnt one?
 
-
 		MYSQL_FIELD *f = get_focus_field();
 		if (f != NULL) {
 
@@ -1006,6 +1005,7 @@ void run_edit_focused_cell() {
 				// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
 				// get field value for "Column_name"
 				// is this possible? we cant actually edit cells from SELECT results
+				// TODO support the MUL key types where there are multiple values that are the primary key
 				char primary_key[64];
 				strclr(primary_key, 64);
 				bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
@@ -1078,8 +1078,6 @@ void run_edit_focused_cell() {
 												mode = TEXT_EDITOR;
 												break;
 											case KEY_y: {
-												// TODO SAVE VALUE and quit
-												// TODO we must deal with escaping single quotes
 												// execute query in the background, then we need to refresh the existing query
 												unsigned long e_imaxf = imaxf * 2 + 1; //https://dev.mysql.com/doc/c-api/8.0/en/mysql-real-escape-string-quote.html
 												char escaped[e_imaxf]; // escape string version
@@ -1087,10 +1085,23 @@ void run_edit_focused_cell() {
 												unsigned long p = mysql_real_escape_string_quote(selected_mysql_conn, escaped, edited, imaxf - 1, '\'');
 												//xlogf("EDITED: [%s]\n", edited);
 												//xlogf("ESCAPE: [%s]\n", escaped);
+												// detect if "NULL" was entered
 												int nf, nr, ar, ec;
-												MYSQL_RES *result = db_queryf(
+												MYSQL_RES *result = NULL;
+												//xlogf("NULL CHECK: %s NULL=%d null=%d\n", edited, strcmp(edited, "NULL"), strcmp(edited, "null"));
+												if (strcmp(edited, "NULL") == 0 || strcmp(edited, "null") == 0) {
+													// null
+													result = db_queryf(
 														selected_mysql_conn, &nf, &nr, &ar, &ec,
-														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, escaped, primary_key, primary_val);
+														"UPDATE `%s` SET `%s`=NULL WHERE `%s` = '%s'\n", f->table, f->name, primary_key, primary_val
+													);
+												} else {
+													// value
+													result = db_queryf(
+														selected_mysql_conn, &nf, &nr, &ar, &ec,
+														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, escaped, primary_key, primary_val
+													);
+												}
 												if (!result && ec > 0) { // inserts have null responses
 													display_error(mysql_error(selected_mysql_conn));
 												}
@@ -1598,6 +1609,7 @@ void run_db_interact(MYSQL *con) {
 // - rethink "die" statements in sqlops
 // - text editor needs qol work
 // - cell editor, col sorter
+// - query history you can cycle through
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
 
 char *program_name;
