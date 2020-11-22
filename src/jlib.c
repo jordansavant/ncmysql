@@ -45,6 +45,22 @@ int strchrplc(char *str, char orig, char rep) {
 	return n;
 }
 
+void strstripspaces(char* str) {
+	int i, x;
+	for(i=x=0; str[i]; ++i)
+		if(!isspace(str[i]) || (i > 0 && !isspace(str[i-1])))
+			str[x++] = str[i];
+	str[x] = '\0';
+}
+
+void strflat(char *str) {
+	// replace rando whitespace with single spaces
+	strchrplc(str, '\t', ' ');
+	strchrplc(str, '\n', ' ');
+	strchrplc(str, '\r', ' ');
+}
+
+
 void strfill(char *string, int size, char c) {
 	for (int i = 0; i < size - 1; i++) {
 		string[i] = c;

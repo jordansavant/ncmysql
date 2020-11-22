@@ -81,6 +81,8 @@ int clampi(int v, int min, int max);
 
 // STRING FUNCTIONS
 int strchrplc(char *str, char orig, char rep);
+void strstripspaces(char* str);
+void strflat(char *str);
 void strfill(char *string, int size, char c);
 void strclr(char *string, int size);
 size_t strtrim(char *out, size_t len, const char *str, bool trimlead, bool trimtrail);

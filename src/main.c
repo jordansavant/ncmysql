@@ -762,11 +762,6 @@ bool get_focus_row_val(char *fieldname, char *buffer, int len) {
 	return false;
 }
 
-void strcollapse(char *str) {
-	strchrplc(str, '\t', ' ');
-	strchrplc(str, '\n', ' ');
-	strchrplc(str, '\r', ' ');
-}
 
 bool get_focus_data(char *buffer, int len, bool clean) {
 	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
@@ -784,7 +779,7 @@ bool get_focus_data(char *buffer, int len, bool clean) {
 			strncpy(buffer, row[focus_cell_c], len - 1);
 			buffer[len - 1] = '\0';
 			if (clean) {
-				strcollapse(buffer);
+				strflat(buffer);
 			}
 			return true;
 		}
@@ -980,7 +975,7 @@ void render_result_row(int row_index, int *render_row) {
 			} else {
 				// CONTENTS
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
-				strcollapse(buffer);
+				strflat(buffer);
 			}
 			waddstr(result_pad, buffer);
 
@@ -1181,12 +1176,13 @@ void run_view_focused_cell() {
 				//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
 				int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
 				do {
-					xlog("   - TEXT_EDITOR");
 					display_strf("");
 					display_cmdf("VIEW DATA", 1, "[x]=done");
 					// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
 					prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				} while(getch() != KEY_x);
+				clear();
+				refresh();
 			} else {
 				display_error("Unable to fetch field contents for viewing");
 			} // eo if contents
@@ -1391,14 +1387,15 @@ void run_db_interact(MYSQL *con) {
 				case INTERACT_STATE_RESULTS: {
 					// string bar (none)
 					char buffer[256];
-					if (get_focus_data(buffer, 256, true))
+					if (get_focus_data(buffer, 256, true)) {
+						strstripspaces(buffer);
 						display_str(buffer);
-					else
+					} else
 						display_str("");
 
 					// command bar
 					if (the_num_rows > 0 && focus_cell_r > 0)
-						display_cmdf("RESULTS", 3, "[e]=edit", "[tab]=mode", "[x]=exit");
+						display_cmdf("RESULTS", 4, "[v]=view", "[e]=edit", "[tab]=mode", "[x]=exit");
 					else if (the_num_rows > 0 && focus_cell_r == 0) // header
 						display_cmdf("RESULTS", 3, "[s]=sort", "[tab]=mode", "[x]=exit");
 					else
@@ -1716,10 +1713,8 @@ void run_db_interact(MYSQL *con) {
 // TODO LIST
 // - rethink "die" statements in sqlops
 // - cell editor needs to support multiple primary keys
-// - show create table collapses the cell data, perhaps a "VIEW" mode for cell data thats a full screen takeover?
 // - text editor needs qol work
 // - query history you can cycle through
-// - csv scanner will not do quotes or escaped delimiters, not sure i care
 // - error popup on macos has wbkgd values with ????? failed character renders
 // - cell editor has weird render issues for row past end since i left a buffer line
 // - creating a table does not refresh the table list and show it
