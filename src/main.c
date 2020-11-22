@@ -712,7 +712,7 @@ void execute_query(bool clear) {
 	}
 }
 
-void clear_query() {
+void clear_query(bool clear_results) {
 	the_num_fields = 0;
 	the_num_rows = 0;
 	the_aff_rows = 0;
@@ -721,16 +721,18 @@ void clear_query() {
 		the_result = NULL;
 	}
 	strclr(the_query, QUERY_MAX);
-	result_rerender_full = true;
-	result_rerender_focus = false;
-	last_focus_cell_r = 0;
-	focus_cell_r = 0;
-	focus_cell_c = 0;
-	focus_cell_c_width = 0;
-	focus_cell_c_pos = 0;
-	focus_cell_r_pos = 0;
+	if (clear_results) {
+		result_rerender_full = true;
+		result_rerender_focus = false;
+		last_focus_cell_r = 0;
+		focus_cell_r = 0;
+		focus_cell_c = 0;
+		focus_cell_c_width = 0;
+		focus_cell_c_pos = 0;
+		focus_cell_r_pos = 0;
 
-	ui_clear_win(result_pad);
+		ui_clear_win(result_pad);
+	}
 }
 
 bool get_focus_row_val(char *fieldname, char *buffer, int len) {
@@ -1273,6 +1275,7 @@ void run_db_interact(MYSQL *con) {
 				} // eo if results
 				else if (!the_result && the_aff_rows) {
 					// no results but a query did affect some rows so print the info for that
+					ui_clear_win(result_pad);
 					char buffer[64];
 					strclr(buffer, 64);
 					sprintf(buffer, "%d %s", the_aff_rows, "affected row(s)");
@@ -1474,7 +1477,7 @@ void run_db_interact(MYSQL *con) {
 							case KEY_DC:
 							case KEY_BACKSPACE:
 								// Clear the editor
-								clear_query();
+								clear_query(false);
 								break;
 							case KEY_i:
 							case KEY_e:
@@ -1578,7 +1581,7 @@ void run_db_interact(MYSQL *con) {
 			delwin(tbl_pad);
 			clear();
 			// clear main query
-			clear_query();
+			clear_query(true);
 			// clear table list query
 			if (tbl_result)
 				mysql_free_result(tbl_result); // free sql memory
