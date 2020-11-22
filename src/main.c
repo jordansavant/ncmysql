@@ -1127,7 +1127,7 @@ void run_edit_focused_cell() {
 							display_error("Unable to fetch field contents for editing");
 						} // eo if contents
 					} else {
-						display_error("No primary key value could be determined for the selected row");
+						display_error("No single primary key could be determined for the selected row");
 					} // eo if pk val
 				} else {
 					display_error("No primary key could be determined for this field's table");
@@ -1340,7 +1340,10 @@ void run_db_interact(MYSQL *con) {
 						display_str("");
 
 					// command bar
-					display_cmdf("RESULTS", 2, "[tab]=mode", "[x]=exit");// "tab:next | x:close");
+					if (the_num_rows > 0 && focus_cell_r > 0)
+						display_cmdf("RESULTS", 3, "[e]=edit", "[tab]=mode", "[x]=exit");// "tab:next | x:close");
+					else
+						display_cmdf("RESULTS", 2, "[tab]=mode", "[x]=exit");// "tab:next | x:close");
 					break;
 				}
 			}
@@ -1575,8 +1578,9 @@ void run_db_interact(MYSQL *con) {
 									result_rerender_focus = true;
 									break;
 								case KEY_e:
-									// open the editor for the selected cell
-									result_state = RESULT_STATE_EDIT_CELL;
+									// open editor for selected cell if this is not a header and we ahve rows
+									if (the_num_rows > 0 && focus_cell_r > 0)
+										result_state = RESULT_STATE_EDIT_CELL;
 									break;
 							} // eo navigate KEY switch
 							break;
@@ -1623,6 +1627,7 @@ void run_db_interact(MYSQL *con) {
 // - query history you can cycle through
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
 // - error popup on macos has wbkgd values with ????? failed character renders
+// - cell editor has weird render issues for row past end since i left a buffer line
 
 char *program_name;
 void cli_usage(FILE* f) {

@@ -673,11 +673,22 @@ void db_get_db(MYSQL *con, char *buffer, int len) {
 	return;
 }
 
+/**
+ * This function has an errant assumption for one primary
+ * key when it is possible in MySQL to have more than
+ * one, so it will return FALSE if more than one is
+ * detected
+ */
 bool db_get_primary_key(MYSQL *con, char *table, char *buffer, int len) {
 	int nf, nr, ar, ec;
 	MYSQL_RES *result = db_queryf(con, &nf, &nr, &ar, &ec, "SHOW KEYS FROM `%s` WHERE `Key_name` = 'PRIMARY'", table);
 	if (!result && ec > 0) {
+		// error
 		strclr(buffer, len);
+		return false;
+	}
+	if (nr != 1) {
+		// either no primary key or more than one
 		return false;
 	}
 	// loop over fields until one is found called Column_name
