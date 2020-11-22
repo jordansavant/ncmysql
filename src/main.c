@@ -114,6 +114,7 @@ enum QUERY_STATE query_state = QUERY_STATE_COMMAND;
 enum RESULT_STATE {
 	RESULT_STATE_NAVIGATE,
 	RESULT_STATE_EDIT_CELL,
+	RESULT_STATE_VIEW_CELL,
 };
 enum RESULT_STATE result_state = RESULT_STATE_NAVIGATE;
 
@@ -761,7 +762,13 @@ bool get_focus_row_val(char *fieldname, char *buffer, int len) {
 	return false;
 }
 
-bool get_focus_data(char *buffer, int len) {
+void strcollapse(char *str) {
+	strchrplc(str, '\t', ' ');
+	strchrplc(str, '\n', ' ');
+	strchrplc(str, '\r', ' ');
+}
+
+bool get_focus_data(char *buffer, int len, bool clean) {
 	if (!the_result || the_num_rows == 0 || the_num_fields == 0)
 		return false;
 	if (focus_cell_r == 0) {
@@ -776,6 +783,9 @@ bool get_focus_data(char *buffer, int len) {
 		if (row[focus_cell_c] != NULL && strlen(row[focus_cell_c]) > 0) {
 			strncpy(buffer, row[focus_cell_c], len - 1);
 			buffer[len - 1] = '\0';
+			if (clean) {
+				strcollapse(buffer);
+			}
 			return true;
 		}
 		strclr(buffer, len);
@@ -969,10 +979,8 @@ void render_result_row(int row_index, int *render_row) {
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, "EMPTY");
 			} else {
 				// CONTENTS
-				strchrplc(row[i], '\t', ' ');
-				strchrplc(row[i], '\n', ' ');
-				strchrplc(row[i], '\r', ' ');
 				snprintf(buffer, imaxf + 1, "%*s", imaxf, row[i]);
+				strcollapse(buffer);
 			}
 			waddstr(result_pad, buffer);
 
@@ -998,7 +1006,6 @@ void run_edit_focused_cell() {
 		ui_clear_win(cell_pad);
 		// get the data
 		// TODO make the pad height variable to fit longer text
-		// TODO how do we get and edit a value based on PRIMARY key, what if there isnt one?
 
 		MYSQL_FIELD *f = get_focus_field();
 		if (f != NULL) {
@@ -1025,7 +1032,7 @@ void run_edit_focused_cell() {
 						int imaxf = f->max_length + 1; // max length of data in row
 						char buffer[imaxf];
 						strclr(buffer, imaxf);
-						if (get_focus_data(buffer, imaxf)) {
+						if (get_focus_data(buffer, imaxf, false)) {
 							// render the pad to edit
 							int sy,sx;
 							getmaxyx(stdscr, sy, sx);
@@ -1035,15 +1042,6 @@ void run_edit_focused_cell() {
 							waddstr(cell_pad, buffer);
 
 							clear();
-
-							//attrset(COLOR_PAIR(COLOR_BLACK_WHITE));
-							// top and left
-							//move(0, 0); vline(' ', sy - 2); // l1
-							//move(0, 1); vline(' ', sy - 2); // l2
-							//move(0, 2); hline(' ', sx - 4); // top
-							// right, (bottom is display_str)
-							//move(0, sx - 1); vline(' ', sy - 2); // r1
-							//move(0, sx - 2); vline(' ', sy - 2); // r2
 							refresh();
 
 							char edited[imaxf];
@@ -1143,6 +1141,61 @@ void run_edit_focused_cell() {
 		} // eo if field
 	} // eo if result
 }
+
+
+void run_view_focused_cell() {
+	// I have asked to edit a cell for the results
+	// lets do some checking to make sure I can do this
+
+	if (the_result && the_num_rows > 0 && focus_cell_r > 0) {
+
+		ui_clear_win(cell_pad);
+		// get the data
+		// TODO make the pad height variable to fit longer text
+
+		MYSQL_FIELD *f = get_focus_field();
+		if (f != NULL) {
+			// Get primary key data: key name, key value for this row
+			// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
+			// get field value for "Column_name"
+			// is this possible? we cant actually edit cells from SELECT results
+			// TODO support the MUL key types where there are multiple values that are the primary key
+			// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
+
+			int imaxf = f->max_length + 1; // max length of data in row
+			char buffer[imaxf];
+			strclr(buffer, imaxf);
+			if (get_focus_data(buffer, imaxf, false)) {
+				xlog(buffer);
+				// render the pad to edit
+				int sy,sx;
+				getmaxyx(stdscr, sy, sx);
+				wresize(cell_pad, sy - 2, sx);
+				wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+				wmove(cell_pad, 0, 0);
+				waddstr(cell_pad, buffer);
+
+				clear();
+				refresh();
+
+				//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
+				int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
+				do {
+					xlog("   - TEXT_EDITOR");
+					display_strf("");
+					display_cmdf("VIEW DATA", 1, "[x]=done");
+					// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+					prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+				} while(getch() != KEY_x);
+			} else {
+				display_error("Unable to fetch field contents for viewing");
+			} // eo if contents
+		} else {
+			display_error("Unable to locate field");
+		} // eo if field
+	} // eo if result
+}
+
 
 
 bool cell_sort_asc = true;
@@ -1338,7 +1391,7 @@ void run_db_interact(MYSQL *con) {
 				case INTERACT_STATE_RESULTS: {
 					// string bar (none)
 					char buffer[256];
-					if (get_focus_data(buffer, 256))
+					if (get_focus_data(buffer, 256, true))
 						display_str(buffer);
 					else
 						display_str("");
@@ -1588,6 +1641,10 @@ void run_db_interact(MYSQL *con) {
 									if (the_num_rows > 0 && focus_cell_r > 0)
 										result_state = RESULT_STATE_EDIT_CELL;
 									break;
+								case KEY_v:
+									if (the_num_rows > 0 && focus_cell_r > 0)
+										result_state = RESULT_STATE_VIEW_CELL;
+									break;
 								case KEY_s:
 									if (the_num_rows > 0 && focus_cell_r == 0) {
 										// technically in workbench a sql call is not re run, but instead the
@@ -1603,7 +1660,7 @@ void run_db_interact(MYSQL *con) {
 											mysql_data_seek(tbl_result, tbl_index);
 											MYSQL_ROW r = mysql_fetch_row(tbl_result);
 											char field_name[256];
-											if (get_focus_data(field_name, 256)) {
+											if (get_focus_data(field_name, 256, false)) {
 												if (cell_sort_asc)
 													set_queryf("SELECT * FROM %s ORDER BY `%s` ASC LIMIT 100", r[0], field_name);
 												else
@@ -1620,6 +1677,13 @@ void run_db_interact(MYSQL *con) {
 							xlog("   RESULT_STATE_EDIT_CELL");
 
 							run_edit_focused_cell();
+
+							result_state = RESULT_STATE_NAVIGATE;
+							break;
+						case RESULT_STATE_VIEW_CELL:
+							xlog("   RESULT_STATE_VIEW_CELL");
+
+							run_view_focused_cell();
 
 							result_state = RESULT_STATE_NAVIGATE;
 							break;
@@ -1654,7 +1718,6 @@ void run_db_interact(MYSQL *con) {
 // - cell editor needs to support multiple primary keys
 // - show create table collapses the cell data, perhaps a "VIEW" mode for cell data thats a full screen takeover?
 // - text editor needs qol work
-// - cell editor, col sorter
 // - query history you can cycle through
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
 // - error popup on macos has wbkgd values with ????? failed character renders
