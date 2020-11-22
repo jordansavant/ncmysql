@@ -1,6 +1,6 @@
 # ncmysql
 
-An NCurses explorer and workbench for MySQL
+An ncurses explorer and client for mysql databases.
 
 ## usage
 
