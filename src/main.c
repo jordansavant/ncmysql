@@ -1622,6 +1622,7 @@ void run_db_interact(MYSQL *con) {
 // - cell editor, col sorter
 // - query history you can cycle through
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
+// - error popup on macos has wbkgd values with ????? failed character renders
 
 char *program_name;
 void cli_usage(FILE* f) {
