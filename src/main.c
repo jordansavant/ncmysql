@@ -698,18 +698,21 @@ void execute_query(bool clear) {
 	result_rerender_full = true;
 	result_rerender_focus = false;
 
-	if (clear) {
-		last_focus_cell_r = 0;
-		focus_cell_r = 0;
-		focus_cell_c = 0;
-		focus_cell_c_width = 0;
-		focus_cell_c_pos = 0;
-		focus_cell_r_pos = 0;
-	} else {
-		last_focus_cell_r = mini(last_focus_cell_r, the_num_rows + 1 - 1);
-		focus_cell_r = mini(focus_cell_r, the_num_rows + 1 - 1); // +1 for header row, -1 to make index isntead osize
-		focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
-	}
+	//if (clear) {
+	//	last_focus_cell_r = 0;
+	//	focus_cell_r = 0;
+	//	focus_cell_c = 0;
+	//	focus_cell_c_width = 0;
+	//	focus_cell_c_pos = 0;
+	//	focus_cell_r_pos = 0;
+	//} else {
+	//	last_focus_cell_r = mini(last_focus_cell_r, the_num_rows + 1 - 1);
+	//	focus_cell_r = mini(focus_cell_r, the_num_rows + 1 - 1); // +1 for header row, -1 to make index isntead osize
+	//	focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
+	//}
+	last_focus_cell_r = mini(last_focus_cell_r, the_num_rows + 1 - 1);
+	focus_cell_r = mini(focus_cell_r, the_num_rows + 1 - 1); // +1 for header row, -1 to make index isntead osize
+	focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
 }
 
 void clear_query(bool clear_results) {
@@ -1142,6 +1145,7 @@ void run_edit_focused_cell() {
 }
 
 
+bool cell_sort_asc = true;
 void run_db_interact(MYSQL *con) {
 
 	int sx, sy;
@@ -1341,9 +1345,11 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (the_num_rows > 0 && focus_cell_r > 0)
-						display_cmdf("RESULTS", 3, "[e]=edit", "[tab]=mode", "[x]=exit");// "tab:next | x:close");
+						display_cmdf("RESULTS", 3, "[e]=edit", "[tab]=mode", "[x]=exit");
+					else if (the_num_rows > 0 && focus_cell_r == 0) // header
+						display_cmdf("RESULTS", 3, "[s]=sort", "[tab]=mode", "[x]=exit");
 					else
-						display_cmdf("RESULTS", 2, "[tab]=mode", "[x]=exit");// "tab:next | x:close");
+						display_cmdf("RESULTS", 2, "[tab]=mode", "[x]=exit");
 					break;
 				}
 			}
@@ -1582,6 +1588,31 @@ void run_db_interact(MYSQL *con) {
 									if (the_num_rows > 0 && focus_cell_r > 0)
 										result_state = RESULT_STATE_EDIT_CELL;
 									break;
+								case KEY_s:
+									if (the_num_rows > 0 && focus_cell_r == 0) {
+										// technically in workbench a sql call is not re run, but instead the
+										// result set is directly sorted
+										// this would require us copying the result set into a new array when we execute
+										// and then using this copy with all result inspections, loops, etc
+										// then this would sort the result set based on the position
+										// The other option is to attempt to find the current query and do string
+										// manipulation to update or add an ORDER BY clause to it
+										// The final option is to do a default select 100 on the fields table
+										// with an ORDER BY field ASC/DESC etc on it
+										if (tbl_result && tbl_count > 0) {
+											mysql_data_seek(tbl_result, tbl_index);
+											MYSQL_ROW r = mysql_fetch_row(tbl_result);
+											char field_name[256];
+											if (get_focus_data(field_name, 256)) {
+												if (cell_sort_asc)
+													set_queryf("SELECT * FROM %s ORDER BY `%s` ASC LIMIT 100", r[0], field_name);
+												else
+													set_queryf("SELECT * FROM %s ORDER BY `%s` DESC LIMIT 100", r[0], field_name);
+												execute_query(true);
+												cell_sort_asc = !cell_sort_asc;
+											}
+										}
+									}
 							} // eo navigate KEY switch
 							break;
 						} // eo RESULT_STATE_NAVIGATE case
@@ -1628,6 +1659,7 @@ void run_db_interact(MYSQL *con) {
 // - csv scanner will not do quotes or escaped delimiters, not sure i care
 // - error popup on macos has wbkgd values with ????? failed character renders
 // - cell editor has weird render issues for row past end since i left a buffer line
+// - creating a table does not refresh the table list and show it
 
 char *program_name;
 void cli_usage(FILE* f) {
