@@ -378,6 +378,12 @@ void on_con_select(char* label) {
 
 void run_con_select() {
 
+	int sy,sx;
+	getmaxyx(stdscr, sy, sx);
+	move(8, sx / 2 - 5);
+	attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_DIM);
+	addstr("CONNECTION");
+
 	con_selected = false;
 	refresh();
 
@@ -487,6 +493,12 @@ void on_db_select(char *database) {
 
 int menu_select_pos = 0;
 void run_db_select(MYSQL *con, struct Connection *app_con) {
+
+	int sy,sx;
+	getmaxyx(stdscr, sy, sx);
+	move(8, sx / 2 - 4);
+	attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_DIM);
+	addstr("DATABASE");
 
 	refresh();
 	switch (db_select_state) {
@@ -761,7 +773,8 @@ bool get_focus_data(char *buffer, int len) {
 			buffer[len - 1] = '\0';
 			return true;
 		}
-		return false;
+		strclr(buffer, len);
+		return true;
 	}
 	return true;
 }
