@@ -965,8 +965,6 @@ void render_result_row(int row_index, int *render_row) {
 // CELL INSPECTION METHODS
 
 void run_edit_focused_cell() {
-	// I have asked to edit a cell for the results
-	// lets do some checking to make sure I can do this
 
 	if (!the_result || the_num_rows == 0 || focus_cell_r <= 0)
 		return;
@@ -1014,6 +1012,8 @@ void run_edit_focused_cell() {
 	}
 
 	// render the pad to edit
+	clear();
+	refresh();
 	ui_clear_win(cell_pad);
 	int sy,sx;
 	getmaxyx(stdscr, sy, sx);
@@ -1021,9 +1021,6 @@ void run_edit_focused_cell() {
 	wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
 	wmove(cell_pad, 0, 0);
 	waddstr(cell_pad, buffer);
-
-	clear();
-	refresh();
 
 	char edited[imaxf];
 	//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
@@ -1108,57 +1105,48 @@ void run_edit_focused_cell() {
 }
 
 void run_view_focused_cell() {
-	// I have asked to edit a cell for the results
-	// lets do some checking to make sure I can do this
 
-	if (the_result && the_num_rows > 0 && focus_cell_r > 0) {
+	if (!the_result || the_num_rows == 0 || focus_cell_r <= 0)
+		return;
 
-		ui_clear_win(cell_pad);
-		// get the data
-		// TODO make the pad height variable to fit longer text
+	MYSQL_FIELD *f = get_focus_field();
+	if (f == NULL) {
+		display_error("Unable to locate field");
+		return;
+	}
 
-		MYSQL_FIELD *f = get_focus_field();
-		if (f != NULL) {
-			// Get primary key data: key name, key value for this row
-			// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
-			// get field value for "Column_name"
-			// is this possible? we cant actually edit cells from SELECT results
-			// TODO support the MUL key types where there are multiple values that are the primary key
-			// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
+	// get the data
+	// TODO make the pad height variable to fit longer text
 
-			int imaxf = f->max_length + 1; // max length of data in row
-			char buffer[imaxf];
-			strclr(buffer, imaxf);
-			if (get_focus_data(buffer, imaxf, false)) {
-				xlog(buffer);
-				// render the pad to edit
-				int sy,sx;
-				getmaxyx(stdscr, sy, sx);
-				wresize(cell_pad, sy - 2, sx);
-				wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
-				wmove(cell_pad, 0, 0);
-				waddstr(cell_pad, buffer);
+	int imaxf = f->max_length + 1; // max length of data in row
+	char buffer[imaxf];
+	strclr(buffer, imaxf);
+	if (!get_focus_data(buffer, imaxf, false)) {
+		display_error("Unable to fetch field contents for viewing");
+		return;
+	}
 
-				clear();
-				refresh();
+	clear();
+	refresh();
+	ui_clear_win(cell_pad);
+	int sy,sx;
+	getmaxyx(stdscr, sy, sx);
+	wresize(cell_pad, sy - 2, sx);
+	wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLACK));
+	wmove(cell_pad, 0, 0);
+	waddstr(cell_pad, buffer);
 
-				//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
-				int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
-				do {
-					display_strf("");
-					display_cmdf("VIEW DATA", 1, "[x]=done");
-					// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
-					prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-				} while(getch() != KEY_x);
-				clear();
-				refresh();
-			} else {
-				display_error("Unable to fetch field contents for viewing");
-			} // eo if contents
-		} else {
-			display_error("Unable to locate field");
-		} // eo if field
-	} // eo if result
+	//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
+	int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
+	do {
+		display_strf("");
+		display_cmdf("VIEW DATA", 1, "[x]=done");
+		// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+		prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+	} while(getch() != KEY_x);
+
+	clear();
+	refresh();
 }
 
 
