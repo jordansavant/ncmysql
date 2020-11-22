@@ -1701,7 +1701,6 @@ bool arg_info = false;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
-	// TODO help arg?
 	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:")) != -1) {
 		switch (c) {
 			case 'i': arg_info = true; break;
