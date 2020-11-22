@@ -27,7 +27,7 @@ A debug log is placed in `logs/log` which you can view for run time information.
 
 ## building
 
-I have built this on Ubuntu and macOS High Sierra using Homebrew.
+I have built this on Ubuntu and macOS Catalina using Homebrew.
 
 Dependencies:
 
@@ -41,7 +41,7 @@ Building on Linux (Ubuntu):
 - compile only: `make` will place executable as `bin/main.out`
 - compile and run: `make run` or with args as `make ARGS="[args here]" run`
 
-Building on Homebrew (macOS High Sierra):
+Building on Homebrew (macOS Catalina):
 
 - `brew install ncurses mysql`
 - compile only: `make macos` will place executable as `bin/main.out`
