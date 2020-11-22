@@ -968,145 +968,143 @@ void run_edit_focused_cell() {
 	// I have asked to edit a cell for the results
 	// lets do some checking to make sure I can do this
 
-	if (the_result && the_num_rows > 0 && focus_cell_r > 0) {
+	if (!the_result || the_num_rows == 0 || focus_cell_r <= 0)
+		return;
 
-		ui_clear_win(cell_pad);
-		// get the data
-		// TODO make the pad height variable to fit longer text
+	MYSQL_FIELD *f = get_focus_field();
+	if (f == NULL) {
+		display_error("Unable to locate field");
+		return;
+	}
 
-		MYSQL_FIELD *f = get_focus_field();
-		if (f != NULL) {
+	if (!f->table) {
+		display_error("Unable to determine table associated with this result field");
+		return;
+	}
 
-			if (f->table) {
-				// Get primary key data: key name, key value for this row
-				// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
-				// get field value for "Column_name"
-				// is this possible? we cant actually edit cells from SELECT results
-				// TODO support the MUL key types where there are multiple values that are the primary key
-				// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
-				char primary_key[64];
-				strclr(primary_key, 64);
-				bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
+	// Get primary key data: key name, key value for this row
+	// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
+	// get field value for "Column_name"
+	// is this possible? we cant actually edit cells from SELECT results
+	// TODO support the MUL key types where there are multiple values that are the primary key
+	// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
+	char primary_key[64];
+	strclr(primary_key, 64);
+	bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
+	if (!pk_found) {
+		display_error("No primary key could be determined for this field's table");
+		return;
+	}
 
-				if (pk_found) {
+	// Get primary key value from this row of data...
+	char primary_val[256];
+	strclr(primary_val, 256);
+	bool pk_val_found = get_focus_row_val(primary_key, primary_val, 256);
+	if (!pk_val_found) {
+		display_error("No primary key value be determined for this field's row");
+		return;
+	}
 
-					// Get primary key value from this row of data...
-					char primary_val[256];
-					strclr(primary_val, 256);
-					bool pk_val_found = get_focus_row_val(primary_key, primary_val, 256);
-					if (pk_val_found) {
+	int imaxf = f->max_length + 1; // max length of data in row
+	char buffer[imaxf];
+	strclr(buffer, imaxf);
+	if (!get_focus_data(buffer, imaxf, false)) {
+		display_error("Unable to fetch field contents for editing");
+		return;
+	}
 
-						int imaxf = f->max_length + 1; // max length of data in row
-						char buffer[imaxf];
-						strclr(buffer, imaxf);
-						if (get_focus_data(buffer, imaxf, false)) {
-							// render the pad to edit
-							int sy,sx;
-							getmaxyx(stdscr, sy, sx);
-							wresize(cell_pad, sy - 2, sx);
-							wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
-							wmove(cell_pad, 0, 0);
-							waddstr(cell_pad, buffer);
+	// render the pad to edit
+	ui_clear_win(cell_pad);
+	int sy,sx;
+	getmaxyx(stdscr, sy, sx);
+	wresize(cell_pad, sy - 2, sx);
+	wattrset(cell_pad, COLOR_PAIR(COLOR_WHITE_BLUE));
+	wmove(cell_pad, 0, 0);
+	waddstr(cell_pad, buffer);
 
-							clear();
-							refresh();
+	clear();
+	refresh();
 
-							char edited[imaxf];
-							//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
-							int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
-							enum M {
-								TEXT_EDITOR,
-								CONFIRM
-							};
-							enum M mode = TEXT_EDITOR;
-							bool editing=true;
-							while (editing) {
-								switch (mode) {
-									case TEXT_EDITOR: {
-										xlog("   - TEXT_EDITOR");
-										display_strf("UPDATE %s SET %s='%%s' WHERE %s='%s'", f->table, f->name, primary_key, primary_val);
-										display_cmdf("EDITING", 1, "[^x][esc]=done");
+	char edited[imaxf];
+	//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
+	int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
+	enum M {
+		TEXT_EDITOR,
+		CONFIRM
+	};
+	enum M mode = TEXT_EDITOR;
+	bool editing=true;
+	while (editing) {
+		switch (mode) {
+			case TEXT_EDITOR: {
+				xlog("   - TEXT_EDITOR");
+				display_strf("UPDATE %s SET %s='%%s' WHERE %s='%s'", f->table, f->name, primary_key, primary_val);
+				display_cmdf("EDITING", 1, "[^x][esc]=done");
 
-										// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
-										prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+				// prefresh(pad, y-inpad,x-inpad, upper-left:y-inscreen,x-inscreen, lower-right:y-inscreen,x-onscreen)
+				prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 
-										xlog(buffer);
-										strclr(edited, imaxf);
-										wmove(cell_pad, 0, 0);
-										nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
-										xlogf("[%s]\n", edited);
+				xlog(buffer);
+				strclr(edited, imaxf);
+				wmove(cell_pad, 0, 0);
+				nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+				xlogf("[%s]\n", edited);
 
-										mode = CONFIRM;
-										break;
-									}
-									case CONFIRM:
-										xlog("   - CONFIRM");
-										display_cmdf("SAVE?", 3, "[y]=yes", "[n]=no", "[e]=edit");
-										switch (getch()) {
-											case KEY_e:
-												mode = TEXT_EDITOR;
-												break;
-											case KEY_y: {
-												// execute query in the background, then we need to refresh the existing query
-												unsigned long e_imaxf = imaxf * 2 + 1; //https://dev.mysql.com/doc/c-api/8.0/en/mysql-real-escape-string-quote.html
-												char escaped[e_imaxf]; // escape string version
-												strclr(escaped, e_imaxf);
-												unsigned long p = mysql_real_escape_string_quote(selected_mysql_conn, escaped, edited, imaxf - 1, '\'');
-												//xlogf("EDITED: [%s]\n", edited);
-												//xlogf("ESCAPE: [%s]\n", escaped);
-												// detect if "NULL" was entered
-												int nf, nr, ar, ec;
-												MYSQL_RES *result = NULL;
-												//xlogf("NULL CHECK: %s NULL=%d null=%d\n", edited, strcmp(edited, "NULL"), strcmp(edited, "null"));
-												if (strcmp(edited, "NULL") == 0 || strcmp(edited, "null") == 0) {
-													// null
-													result = db_queryf(
-														selected_mysql_conn, &nf, &nr, &ar, &ec,
-														"UPDATE `%s` SET `%s`=NULL WHERE `%s` = '%s'\n", f->table, f->name, primary_key, primary_val
-													);
-												} else {
-													// value
-													result = db_queryf(
-														selected_mysql_conn, &nf, &nr, &ar, &ec,
-														"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, escaped, primary_key, primary_val
-													);
-												}
-												if (!result && ec > 0) { // inserts have null responses
-													display_error(mysql_error(selected_mysql_conn));
-												}
-												// refresh result query
-												execute_query(false);
-												editing = false;
-												clear();
-												refresh();
-												break;
-											}
-											case KEY_n:
-											case KEY_x:
-												editing = false;
-												clear();
-												refresh();
-												break;
-										}
-										break;
-								} // eo mode switch
-							} // eo edit loop
+				mode = CONFIRM;
+				break;
+			}
+			case CONFIRM:
+				xlog("   - CONFIRM");
+				display_cmdf("SAVE?", 3, "[y]=yes", "[n]=no", "[e]=edit");
+				switch (getch()) {
+					case KEY_e:
+						mode = TEXT_EDITOR;
+						break;
+					case KEY_y: {
+						// execute query in the background, then we need to refresh the existing query
+						unsigned long e_imaxf = imaxf * 2 + 1; //https://dev.mysql.com/doc/c-api/8.0/en/mysql-real-escape-string-quote.html
+						char escaped[e_imaxf]; // escape string version
+						strclr(escaped, e_imaxf);
+						unsigned long p = mysql_real_escape_string_quote(selected_mysql_conn, escaped, edited, imaxf - 1, '\'');
+						//xlogf("EDITED: [%s]\n", edited);
+						//xlogf("ESCAPE: [%s]\n", escaped);
+						// detect if "NULL" was entered
+						int nf, nr, ar, ec;
+						MYSQL_RES *result = NULL;
+						//xlogf("NULL CHECK: %s NULL=%d null=%d\n", edited, strcmp(edited, "NULL"), strcmp(edited, "null"));
+						if (strcmp(edited, "NULL") == 0 || strcmp(edited, "null") == 0) {
+							// null
+							result = db_queryf(
+								selected_mysql_conn, &nf, &nr, &ar, &ec,
+								"UPDATE `%s` SET `%s`=NULL WHERE `%s` = '%s'\n", f->table, f->name, primary_key, primary_val
+							);
 						} else {
-							display_error("Unable to fetch field contents for editing");
-						} // eo if contents
-					} else {
-						display_error("No single primary key could be determined for the selected row");
-					} // eo if pk val
-				} else {
-					display_error("No primary key could be determined for this field's table");
-				} // eo if primay key
-			} else {
-				display_error("Unable to determine table associated with this result field");
-			} // eo if table
-		} else {
-			display_error("Unable to locate field");
-		} // eo if field
-	} // eo if result
+							// value
+							result = db_queryf(
+								selected_mysql_conn, &nf, &nr, &ar, &ec,
+								"UPDATE `%s` SET `%s`='%s' WHERE `%s` = '%s'\n", f->table, f->name, escaped, primary_key, primary_val
+							);
+						}
+						if (!result && ec > 0) { // inserts have null responses
+							display_error(mysql_error(selected_mysql_conn));
+						}
+						// refresh result query
+						execute_query(false);
+						editing = false;
+						clear();
+						refresh();
+						break;
+					}
+					case KEY_n:
+					case KEY_x:
+						editing = false;
+						clear();
+						refresh();
+						break;
+				}
+				break;
+		} // eo mode switch
+	} // eo edit loop
 }
 
 void run_view_focused_cell() {
