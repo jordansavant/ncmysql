@@ -2,6 +2,8 @@
 
 An ncurses explorer and client for MySQL databases written in C
 
+<img src="https://raw.githubusercontent.com/jordansavant/ncmysql/master/screen.png" />
+
 ## usage
 
 ```
