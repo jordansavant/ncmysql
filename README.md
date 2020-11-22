@@ -47,7 +47,6 @@ Building on Homebrew (macOS High Sierra):
 
 ## todo
 
-```
 - rethink "die" statements in sqlops, seems like nonsense, consumer should define error handling
 - cell editor needs to support multiple primary keys
 - text editor needs quality of life work for various keys like HOME, END, delete a line, insert a newline etc
@@ -56,5 +55,3 @@ Building on Homebrew (macOS High Sierra):
 - cell editor has weird render issues for row past end since i left a buffer line
 - creating a table does not refresh the table list and show it
 - cell editor not applying updates to content with inserted new lines
-```
-
