@@ -45,3 +45,16 @@ Building on Homebrew (macOS High Sierra):
 - compile only: `make macos` will place executable as `bin/main.out`
 - compile and run: `make macos-run` or with args as `make ARGS="[args here]" macos-run`
 
+## todo
+
+```
+- rethink "die" statements in sqlops, seems like nonsense, consumer should define error handling
+- cell editor needs to support multiple primary keys
+- text editor needs quality of life work for various keys like HOME, END, delete a line, insert a newline etc
+- query history you can cycle through
+- error popup on macos has wbkgd values with ????? failed character renders, need to manually render backgrounds
+- cell editor has weird render issues for row past end since i left a buffer line
+- creating a table does not refresh the table list and show it
+- cell editor not applying updates to content with inserted new lines
+```
+

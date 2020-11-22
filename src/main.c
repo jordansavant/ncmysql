@@ -1710,16 +1710,6 @@ void run_db_interact(MYSQL *con) {
 }
 
 
-// TODO LIST
-// - rethink "die" statements in sqlops
-// - cell editor needs to support multiple primary keys
-// - text editor needs qol work
-// - query history you can cycle through
-// - error popup on macos has wbkgd values with ????? failed character renders
-// - cell editor has weird render issues for row past end since i left a buffer line
-// - creating a table does not refresh the table list and show it
-// - cell editor not applying updates to content with inserted new lines
-
 char *program_name;
 void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
