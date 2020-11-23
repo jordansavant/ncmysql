@@ -309,7 +309,17 @@ void display_error(const char *string) {
 	// clear all of the application
 	clear();
 	refresh();
-	wbkgd(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+	wbkgdset(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+
+	// because the mac version of ncurses does not handle
+	// wbkgd commands correctly i will need to fill it manually
+	int my, mx;
+	getmaxyx(error_window, my, mx);
+	for (int r=0; r<my; r++) {
+		for (int c=0; c<mx; c++) {
+			waddch(error_window, ' ');
+		}
+	}
 
 	// render the error message
 	wmove(error_window, 1, 2);
