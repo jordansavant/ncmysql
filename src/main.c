@@ -55,7 +55,9 @@ MYSQL *selected_mysql_conn = NULL;
 #define DB_NAME_LEN 64
 char db_name[DB_NAME_LEN];
 
+#define QUERY_HIST_LEN	10
 #define QUERY_MAX	4096
+char query_history[QUERY_HIST_LEN][QUERY_MAX];
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
@@ -639,6 +641,13 @@ int calc_result_pad_width();
 int calc_result_pad_height();
 
 void execute_query(bool clear) {
+
+	// shift on to history
+	//for (int i=1; i < QUERY_HIST_LEN; i++) {
+	//	strncpy(query_history[i - 1], query_history[i], QUERY_MAX);
+	//}
+	//strncpy(query_history[QUERY_HIST_LEN - 1], the_query, QUERY_MAX);
+
 	int errcode;
 	xlog(the_query);
 	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &errcode);

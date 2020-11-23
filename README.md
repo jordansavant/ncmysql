@@ -52,7 +52,6 @@ Building on Homebrew (macOS Catalina):
 - bugs
   - cell editor has weird render issues for row past end since i left a buffer line
   - cell editor not applying updates to content with inserted new lines
-  - error popup on macos has wbkgd values with ????? failed character renders, need to manually render backgrounds
 - rethink "die" statements in sqlops, seems like nonsense, consumer should define error handling
 - creating a table does not refresh the table list and show it
 - cell editor needs to support multiple primary keys
