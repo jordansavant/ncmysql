@@ -915,12 +915,13 @@ void render_result_row(int row_index, int *render_row) {
 					case MYSQL_TYPE_FLOAT:
 					case MYSQL_TYPE_DOUBLE:
 					case MYSQL_TYPE_BIT:
-						attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
+						attrs = COLOR_PAIR(COLOR_CYAN_BLACK);
 						break;
 					case MYSQL_TYPE_DATETIME:
 					case MYSQL_TYPE_DATE:
 					case MYSQL_TYPE_TIME:
-						attrs = COLOR_PAIR(COLOR_BLUE_BLACK);
+					case MYSQL_TYPE_TIMESTAMP:
+						attrs = COLOR_PAIR(COLOR_MAGENTA_BLACK);
 						break;
 					default:
 						attrs = COLOR_PAIR(COLOR_WHITE_BLACK);
