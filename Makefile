@@ -9,7 +9,7 @@ DEPS = src/pass.h src/jlib.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 make: $(BUILD) $(DEPS)
-	gcc $(BUILD) $(LIBS) $(CFLAGS)
+	gcc $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out
 run: $(BUILD) $(DEPS)
 	gcc $(BUILD) $(LIBS) $(CFLAGS) -o bin/main.out && ./bin/main.out $(ARGS)
 
