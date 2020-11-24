@@ -1,6 +1,4 @@
 *.out
 *.swp
 *.swo
-bin/
-logs/
 connections.csv
