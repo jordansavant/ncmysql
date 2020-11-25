@@ -23,7 +23,7 @@ Optionally an SSH host can be provided such as `user@host` and the program will 
 Running with file flags `-fd` will read a CSV file of connections in the format: `name,host,port,user,pass,tunnel`. The `-d` option allows you to define the csv delimeter instead of a default comma `,`.
 If no options are presented it will look within the executable directory for a `connections.csv` file.
 
-A debug log is placed in `logs/log` which you can view for run time information.
+If option `-g` provides a writable file, it will be used as a debug log which you can view for run time information.
 
 ## building
 

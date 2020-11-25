@@ -1697,8 +1697,8 @@ char *program_name;
 void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
 	fprintf(f, "  %s -i help\n", program_name);
-	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host]\n", program_name);
-	fprintf(f, "  %s -f connection-file=connections.csv [-d delimeter=,]\n", program_name);
+	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host] [-g log-file]\n", program_name);
+	fprintf(f, "  %s -f connection-file=connections.csv [-d delimeter=,] [-g log-file]\n", program_name);
 }
 
 void cli_error(char *err) {
@@ -1715,13 +1715,13 @@ void cli_error(char *err) {
 
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
-char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL;
+char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL, *arg_logfile=NULL;
 char arg_delimeter = ',';
 bool arg_info = false;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
-	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:")) != -1) {
+	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:g:")) != -1) {
 		switch (c) {
 			case 'i': arg_info = true; break;
 			case 'h': arg_host = optarg; break;
@@ -1731,6 +1731,7 @@ int parseargs(int argc, char **argv) {
 			case 's': arg_tunnel = optarg; break;
 			case 'f': arg_confile = optarg; break;
 			case 'd': arg_delimeter = optarg[0]; break;
+			case 'g': arg_logfile = optarg; break;
 			case '?': // appears if unknown option when opterr=0
 				if (optopt == 'h')
 					cli_error("-h missing mysql-host");
@@ -1761,11 +1762,6 @@ char *scan_pass = NULL;
 int s_portmax = 2216;
 int s_port = 2200;
 int main(int argc, char **argv) {
-	selected_mysql_conn = NULL;
-
-	xlogopen("logs/log", "w+");
-	xlog("....... START .......");
-	xlogf("MySQL client version: %s\n", mysql_get_client_info());
 
 	// parse our arguments into data
 	program_name = argv[0];
@@ -1779,7 +1775,13 @@ int main(int argc, char **argv) {
 	}
 
 	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
+	if (arg_logfile && strlen(arg_logfile))
+		xlogopen(arg_logfile, "w+");
 
+	xlog("....... START .......");
+	xlogf("MySQL client version: %s\n", mysql_get_client_info());
+
+	selected_mysql_conn = NULL;
 	bool run = true;
 	while (run) {
 		switch (app_state) {

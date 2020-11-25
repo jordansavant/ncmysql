@@ -10,18 +10,24 @@
 //////////////////////////////////////
 // LOG FUNCTIONS START
 
-FILE* _fp;
+FILE* _fp = NULL;
 void xlogopen(const char *location, char *mode) {
 	_fp = fopen(location, mode);
 }
 void xlogclose() {
+	if (!_fp)
+		return;
 	fclose(_fp);
 }
 void xlog(const char *msg) {
+	if (!_fp)
+		return;
 	fprintf(_fp, "%s\n", msg);
 	fflush(_fp);
 }
 void xlogf(const char *format, ...) {
+	if (!_fp)
+		return;
 	va_list argptr;
 	va_start(argptr, format);
 	vfprintf(_fp, format, argptr);
