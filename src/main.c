@@ -63,7 +63,7 @@ MYSQL_RES* the_result = NULL;
 int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
 bool result_rerender_full = true, result_rerender_focus = false;
 int last_focus_cell_r = 0;
-int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos;
+int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos = 0;
 
 
 //////////////////////////////////////
@@ -1395,7 +1395,7 @@ void run_db_interact(MYSQL *con) {
 			// get focus cell x + focus_cell width
 			// if wider than tbl_render_w then shift pad the difference
 			int rp_width = sx - tbl_render_w - 3; // gutter + len/index swap
-			int rp_height = sy - QUERY_WIN_H - 1 - 2 - 1 - 1; // gutter - bars - len/index swap - 1 for spacing below
+			int rp_height = sy - QUERY_WIN_H - 1 - 2 - 1; // gutter - bars - len/index swap
 			// pad coords to render, shifted to ensure our focused cell is visible
 			int rp_shift_c = 0;
 			int x_overhang_amt = (focus_cell_c_pos + focus_cell_c_width + 3) - rp_width; // plus 3 for spacing + vert bar divider
@@ -1858,7 +1858,6 @@ int main(int argc, char **argv) {
 				if (arg_confile) {
 					fp = fopen(arg_confile, "r");
 				} else {
-					// TODO try to get local untracked conf file
 					char cwd[PATH_MAX];
 					if (getcwd(cwd, sizeof(cwd)) == NULL) {
 						cli_error("failed to get cwd");
@@ -1895,7 +1894,7 @@ int main(int argc, char **argv) {
 					const char *f_user = scantok(tmp_for_user, 4, arg_delimeter);
 					const char *f_pass = scantok(tmp_for_pass, 5, arg_delimeter);
 					const char *f_tunnel = scantok(tmp_for_tunnel, 6, arg_delimeter);
-					xlogf("Fields:\n  name=%s\n  host=%s\n  port=%s\n  user=%s\n  pass=%s\n  tunnel=%s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
+					//xlogf("Fields:\n  name=%s\n  host=%s\n  port=%s\n  user=%s\n  pass=%s\n  tunnel=%s\n", f_name, f_host, f_port, f_user, f_pass, f_tunnel);
 
 					// TODO There are memory leaks coming from strdup
 					// even though we are running free on the app_conn property
