@@ -21,7 +21,7 @@ Running with the host flags `-hlups` requires host and user minimally. If a pass
 Optionally an SSH host can be provided such as `user@host` and the program will fork a system call to establish the SSH tunnel in port ranges of 2200-2216 and use this tunnel to establish the MySQL connection.
 
 Running with file flags `-fd` will read a CSV file of connections in the format: `name,host,port,user,pass,tunnel`. The `-d` option allows you to define the csv delimeter instead of a default comma `,`.
-If no options are presented it will look within the executable directory for a `connections.csv` file.
+If no options are presented it will look within the current working directory for a `connections.csv` file.
 
 If option `-g` provides a writable file, it will be used as a debug log which you can view for run time information.
 
