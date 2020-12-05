@@ -4,7 +4,7 @@ An ncurses explorer and client for MySQL databases written in C
 
 <img src="https://raw.githubusercontent.com/jordansavant/ncmysql/master/tui.png" />
 
-## usage
+## Usage
 
 ```
 Usage:
@@ -25,7 +25,7 @@ If no options are presented it will look within the executable directory for a `
 
 If option `-g` provides a writable file, it will be used as a debug log which you can view for run time information.
 
-## building
+## Building
 
 I have built this on Ubuntu and macOS Catalina using Homebrew.
 
