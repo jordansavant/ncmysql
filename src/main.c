@@ -60,7 +60,7 @@ char db_name[DB_NAME_LEN];
 char query_history[QUERY_HIST_LEN][QUERY_MAX];
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
-int the_num_fields=0, the_num_rows=0, the_aff_rows=0;
+int the_num_fields=0, the_num_rows=0, the_aff_rows=0, the_err_code=-1;
 bool result_rerender_full = true, result_rerender_focus = false;
 int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos = 0;
@@ -638,7 +638,6 @@ void refresh_tables() {
 	if (tbl_result != NULL)
 		mysql_free_result(tbl_result);
 
-	tbl_index = 0; // default to first table
 	tbl_count = 0;
 	tbl_result = NULL;
 
@@ -648,6 +647,8 @@ void refresh_tables() {
 	// TODO handle errocode failure
 	//xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 	tbl_count = num_rows;
+	if (tbl_index >= tbl_count)
+		tbl_index = 0; // default to first table
 }
 
 void set_query(char *query) {
@@ -675,10 +676,9 @@ void execute_query(bool clear) {
 	//}
 	//strncpy(query_history[QUERY_HIST_LEN - 1], the_query, QUERY_MAX);
 
-	int errcode;
 	xlog(the_query);
-	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &errcode);
-	if (!the_result && errcode > 0) { // inserts have null responses
+	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &the_err_code);
+	if (!the_result && the_err_code > 0) { // inserts have null responses
 		display_error(mysql_error(selected_mysql_conn));
 	}
 
@@ -705,8 +705,9 @@ void execute_query(bool clear) {
 	if (strcmp(db_name, buffer) != 0) {
 		strncpy(db_name, buffer, DB_NAME_LEN - 1);
 		db_name[DB_NAME_LEN - 1] = '\0';
-		refresh_tables();
 	}
+	// Also if someone runs a modification for a table name we need to update the table listing
+	refresh_tables();
 
 	// reset our properties for the execution
 	result_rerender_full = true;
@@ -725,14 +726,16 @@ void execute_query(bool clear) {
 	//	focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
 	//}
 	last_focus_cell_r = mini(last_focus_cell_r, the_num_rows + 1 - 1);
-	focus_cell_r = mini(focus_cell_r, the_num_rows + 1 - 1); // +1 for header row, -1 to make index isntead osize
-	focus_cell_c = mini(focus_cell_c, the_num_fields - 1);
+	focus_cell_r = maxi(0, mini(focus_cell_r, the_num_rows + 1 - 1)); // +1 for header row, -1 to make index isntead osize
+	focus_cell_c = maxi(0, mini(focus_cell_c, the_num_fields - 1));
+	//xlogf("EXECUTE DATA: focus_cell_r=%d focus_cell_c=%d the_num_rows=%d the_num_fields%d\n", focus_cell_r, focus_cell_c, the_num_rows, the_num_fields);
 }
 
 void clear_query(bool clear_results) {
 	the_num_fields = 0;
 	the_num_rows = 0;
 	the_aff_rows = 0;
+	the_err_code = 0;
 	if (the_result) {
 		mysql_free_result(the_result); // free sql memory
 		the_result = NULL;
@@ -1389,7 +1392,16 @@ void run_db_interact(MYSQL *con) {
 					wmove(result_pad, 0, 0);
 					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
 					waddstr(result_pad, buffer);
-				} // eo if affected rows
+				} // eo if effected rows
+				else if(!the_result && the_err_code == 0) {
+					ui_clear_win(result_pad);
+					wmove(result_pad, 0, 0);
+					wattrset(result_pad, COLOR_PAIR(COLOR_YELLOW_BLACK));
+					waddstr(result_pad, "query executed");
+				}
+				else {
+					ui_clear_win(result_pad);
+				}	// eo if affected rows
 
 				result_rerender_focus = false;
 				result_rerender_full = false;
@@ -1431,8 +1443,9 @@ void run_db_interact(MYSQL *con) {
 					if (get_focus_data(buffer, 256, true)) {
 						strstripspaces(buffer);
 						display_str(buffer);
-					} else
+					} else {
 						display_str("");
+					}
 
 					// command bar
 					if (the_num_rows > 0 && focus_cell_r > 0 && can_edit_focused_field(false))
