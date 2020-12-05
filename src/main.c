@@ -648,7 +648,7 @@ void refresh_tables() {
 	//xlogf("SHOW TABLES: %d, %d, %d\n", num_rows, num_fields, errcode);
 	tbl_count = num_rows;
 	if (tbl_index >= tbl_count)
-		tbl_index = 0; // default to first table
+		tbl_index = maxi(0, tbl_count - 1); // default to first table
 }
 
 void set_query(char *query) {
