@@ -65,6 +65,16 @@ bool result_rerender_full = true, result_rerender_focus = false;
 int last_focus_cell_r = 0;
 int focus_cell_r = 0, focus_cell_c = 0, focus_cell_c_pos = 0, focus_cell_c_width = 0, focus_cell_r_pos = 0;
 
+#define SPECIAL_DB_COUNT	6
+#define SPECIAL_DB_STRLEN	64
+char special_dbs[SPECIAL_DB_COUNT][SPECIAL_DB_STRLEN] = {
+	"mysql\0",
+	"MYSQL\0",
+	"information_schema\0",
+	"INFORMATION_SCHEMA\0",
+	"innodb\0"
+	"INNODB\0"
+};
 
 //////////////////////////////////////
 // STATE MACHINES
@@ -1001,20 +1011,32 @@ void render_result_row(int row_index, int *render_row) {
 //////////////////////////////////////
 // CELL INSPECTION METHODS
 
-void run_edit_focused_cell() {
-
-	if (!the_result || the_num_rows == 0 || focus_cell_r <= 0)
-		return;
-
+bool can_edit_focused_field(bool display_errors) {
 	MYSQL_FIELD *f = get_focus_field();
 	if (f == NULL) {
-		display_error("Unable to locate field");
-		return;
+		if (display_errors)
+			display_error("Unable to locate field");
+		return false;
 	}
 
 	if (!f->table) {
-		display_error("Unable to determine table associated with this result field");
-		return;
+		if (display_errors)
+			display_error("Unable to determine table associated with this result field");
+		return false;
+	}
+
+	if (!f->db) {
+		if (display_errors)
+			display_error("Could not determine database for selected field");
+		return false;
+	}
+
+	for (int i=0; i < SPECIAL_DB_COUNT; i++) {
+		if (strcmp(f->db, special_dbs[i]) == 0) {
+			if (display_errors)
+				display_error("System database field cannot be modified");
+			return false;
+		}
 	}
 
 	// Get primary key data: key name, key value for this row
@@ -1025,13 +1047,35 @@ void run_edit_focused_cell() {
 	// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
 	char primary_key[64];
 	strclr(primary_key, 64);
-	bool pk_found = db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
-	if (!pk_found) {
-		display_error("No primary key could be determined for this field's table");
-		return;
+	if (!db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64)) {
+		if (display_errors)
+			display_error("No primary key could be determined for this field's table");
+		return false;
 	}
 
+	return true;
+}
+
+void run_edit_focused_cell() {
+
+	if (!the_result || the_num_rows == 0 || focus_cell_r <= 0)
+		return;
+
+	if (!can_edit_focused_field(true))
+		return;
+
+	// Get primary key data: key name, key value for this row
+	// SHOW KEYS FROM test_table WHERE Key_name = "PRIMARY"
+	// get field value for "Column_name"
+	// is this possible? we cant actually edit cells from SELECT results
+	// TODO support the MUL key types where there are multiple values that are the primary key
+	// TODO support multiple primary keys too, this one is dangerously hardcoded to a single one
 	// Get primary key value from this row of data...
+	MYSQL_FIELD *f = get_focus_field();
+	char primary_key[64];
+	strclr(primary_key, 64);
+	db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64);
+
 	char primary_val[256];
 	strclr(primary_val, 256);
 	bool pk_val_found = get_focus_row_val(primary_key, primary_val, 256);
@@ -1391,8 +1435,10 @@ void run_db_interact(MYSQL *con) {
 						display_str("");
 
 					// command bar
-					if (the_num_rows > 0 && focus_cell_r > 0)
-						display_cmdf("RESULTS", 4, "{v}iew", "{e}dit", "[tab]mode", "{e}xit");
+					if (the_num_rows > 0 && focus_cell_r > 0 && can_edit_focused_field(false))
+						display_cmdf("RESULTS", 4, "{v}iew", "{e}dit", "[tab]mode", "{e}xit"); // editable field
+					else if (the_num_rows > 0 && focus_cell_r > 0)
+						display_cmdf("RESULTS", 3, "{v}iew", "[tab]mode", "{e}xit"); // viewable field
 					else if (the_num_rows > 0 && focus_cell_r == 0) // header
 						display_cmdf("RESULTS", 3, "{s}ort", "[tab]mode", "e{x}it");
 					else
@@ -1633,7 +1679,7 @@ void run_db_interact(MYSQL *con) {
 									break;
 								case KEY_e:
 									// open editor for selected cell if this is not a header and we ahve rows
-									if (the_num_rows > 0 && focus_cell_r > 0)
+									if (the_num_rows > 0 && focus_cell_r > 0 && can_edit_focused_field(false))
 										result_state = RESULT_STATE_EDIT_CELL;
 									break;
 								case KEY_v:
