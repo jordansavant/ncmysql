@@ -31,8 +31,7 @@ I have built this on Ubuntu and macOS Catalina using Homebrew.
 
 Dependencies:
 
-- ncurses
-- ncurses menu
+- ncurses (w/ menu)
 - mysqlclient c api library [](https://dev.mysql.com/doc/c-api/8.0/en/c-api-introduction.html)
 
 Building on Linux (Ubuntu):
