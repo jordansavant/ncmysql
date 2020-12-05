@@ -47,16 +47,6 @@ Building on Homebrew (macOS Catalina):
 - compile only: `make macos` will place executable as `bin/main.out`
 - compile and run: `make macos-run` or with args as `make ARGS="[args here]" macos-run`
 
-## todo
-
-- bugs
-  - cell editor not applying updates to content with inserted new lines
-- rethink "die" statements in sqlops, seems like nonsense, consumer should define error handling
-- creating a table does not refresh the table list and show it
-- cell editor needs to support multiple primary keys
-- text editor needs quality of life work for various keys like HOME, END, delete a line, insert a newline etc
-- query history you can cycle through
-- mysqldump, import
 
 
 
