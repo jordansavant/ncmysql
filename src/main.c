@@ -76,6 +76,9 @@ char special_dbs[SPECIAL_DB_COUNT][SPECIAL_DB_STRLEN] = {
 	"INNODB\0"
 };
 
+bool env_has_mysqldump = false;
+bool env_has_mysqlcli = false;
+
 //////////////////////////////////////
 // STATE MACHINES
 
@@ -1870,6 +1873,23 @@ int main(int argc, char **argv) {
 				for (int i=0; i < CONNECTION_COUNT; i++) {
 					app_cons[i] = (struct Connection*)malloc(sizeof(struct Connection));
 					init_conn(app_cons[i]);
+				}
+
+				// determine our environment capabilities
+				int sys_exit = system("command -v mysqldump");
+				int cmd_exit = WEXITSTATUS(sys_exit);
+				env_has_mysqldump = (cmd_exit == 0);
+				if (!env_has_mysqldump) {
+					printf("mysqldump could not be determined, dump feature disabled\nPress enter to continue...");
+					getchar();
+				}
+
+				sys_exit = system("command -v mysqlx");
+				cmd_exit = WEXITSTATUS(sys_exit);
+				env_has_mysqlcli = (cmd_exit == 0);
+				if (!env_has_mysqlcli) {
+					printf("mysql cli could not be determined, import feature disabled\nPress enter to continue...");
+					getchar();
 				}
 
 				// If we had some args that specify loading a connection directly then run that
