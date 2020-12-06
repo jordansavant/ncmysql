@@ -1876,17 +1876,13 @@ int main(int argc, char **argv) {
 				}
 
 				// determine our environment capabilities
-				int sys_exit = system("command -v mysqldump");
-				int cmd_exit = WEXITSTATUS(sys_exit);
-				env_has_mysqldump = (cmd_exit == 0);
+				env_has_mysqldump = sysexists("mysqldump");
 				if (!env_has_mysqldump) {
 					printf("mysqldump could not be determined, dump feature disabled\nPress enter to continue...");
 					getchar();
 				}
 
-				sys_exit = system("command -v mysqlx");
-				cmd_exit = WEXITSTATUS(sys_exit);
-				env_has_mysqlcli = (cmd_exit == 0);
+				env_has_mysqlcli = sysexists("mysql");
 				if (!env_has_mysqlcli) {
 					printf("mysql cli could not be determined, import feature disabled\nPress enter to continue...");
 					getchar();

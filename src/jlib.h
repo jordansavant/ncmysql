@@ -80,6 +80,9 @@ void xlogclose();
 void xlog(const char *msg);
 void xlogf(const char *format, ...);
 
+// SYSTEM FUNCTIONS
+bool sysexists(const char *program);
+
 // MATH FUNCTIONS
 int maxi(int a, int b);
 int mini(int a, int b);

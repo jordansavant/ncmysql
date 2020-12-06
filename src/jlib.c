@@ -40,6 +40,21 @@ void xlogf(const char *format, ...) {
 
 
 //////////////////////////////////////
+// SYSTEM FUNCTIONS START
+
+bool sysexists(const char *program) {
+	char buffer[256];
+	snprintf(buffer, 255, "command -v %s", program);
+	int sys_exit = system(buffer);
+	int cmd_exit = WEXITSTATUS(sys_exit);
+	return cmd_exit == 0;
+}
+
+// SYSTEM FUNCTIONS END
+//////////////////////////////////////
+
+
+//////////////////////////////////////
 // MATH FUNCTIONS START
 
 int maxi(int a, int b) {
