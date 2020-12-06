@@ -25,6 +25,7 @@ struct Connection {
 	char *user;
 	char *pass;
 	char *ssh_tunnel;
+	int sport;
 };
 void init_conn(struct Connection *conn) {
 	conn->isset = false;
@@ -35,6 +36,7 @@ void init_conn(struct Connection *conn) {
 	conn->user = NULL;
 	conn->pass = NULL;
 	conn->ssh_tunnel = NULL;
+	conn->sport = 0;
 }
 void free_conn(struct Connection *conn) {
 	free(conn->name);
@@ -76,6 +78,8 @@ char special_dbs[SPECIAL_DB_COUNT][SPECIAL_DB_STRLEN] = {
 	"INNODB\0"
 };
 
+char env_cwd[PATH_MAX];
+bool env_has_cwd = false;
 bool env_has_mysqldump = false;
 bool env_has_mysqlcli = false;
 
@@ -304,6 +308,26 @@ void display_cmdf(char *mode, int arglen, ...) {
 	waddstr(cmd_window, title);
 
 	wrefresh(cmd_window);
+}
+
+void display_strf_color(int COLOR_PAIR, char *format, ...) {
+	int sx, sy;
+	getmaxyx(stdscr, sy, sx);
+	char str[sx];
+	strclr(str, sx);
+
+	va_list argptr;
+	va_start(argptr, format);
+	vsnprintf(str, sx - 1, format, argptr);
+	va_end(argptr);
+
+	wbkgd(str_window, COLOR_PAIR(COLOR_PAIR));
+	wmove(str_window, 0, 0);
+	wclrtoeol(str_window);
+	wattrset(str_window, COLOR_PAIR(COLOR_PAIR) | A_BOLD);
+	waddstr(str_window, str);
+
+	wrefresh(str_window);
 }
 
 void display_strf(char *format, ...) {
@@ -1241,6 +1265,61 @@ void run_view_focused_cell() {
 // MAIN STATE MACHINE FOR INTERACTING
 // WITH SELECTED DATABASE
 
+void run_mysqldump(char *database) {
+
+	if (!env_has_mysqldump)
+		return;
+
+	// how do we temporarily disable ncurses and go to a command prompt?
+	// then prepopulate it with a command
+	//endwin();
+	char buffer[512];
+	char display[512];
+
+	if (app_con->ssh_tunnel)
+		snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s.sql 2>/dev/null",
+			LOCALHOST,
+			app_con->sport,
+			app_con->user,
+			app_con->pass,
+			database,
+			env_cwd,
+			database
+		);
+	else
+		if (app_con->iport != 0)
+			snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s.sql 2>/dev/null",
+				app_con->host,
+				app_con->iport,
+				app_con->user,
+				app_con->pass,
+				database,
+				env_cwd,
+				database
+			);
+		else
+			snprintf(buffer, 511, "mysqldump -h '%s' -u '%s' -p'%s' '%s' > %s/%s.sql 2>/dev/null",
+				app_con->host,
+				app_con->user,
+				app_con->pass,
+				database,
+				env_cwd,
+				database
+			);
+	snprintf(display, 511, "%s > %s/%s.sql", database, env_cwd, database);
+	display_strf_color(COLOR_WHITE_RED, "MYSQLDUMP: %s [Y/n]?", display);
+	switch (getch()) {
+		case KEY_y:
+			display_strf_color(COLOR_BLACK_CYAN, "DUMPING...");
+			int ec = syscode(buffer);
+            if (ec != 0)
+                display_error("Error with dump command");
+			break;
+		default:
+			return;
+	}
+}
+
 bool cell_sort_asc = true;
 void run_db_interact(MYSQL *con) {
 
@@ -1261,6 +1340,7 @@ void run_db_interact(MYSQL *con) {
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
 			query_state = QUERY_STATE_COMMAND;
+            the_err_code = -1;
 
 			if (tbl_count == 0)
 				db_state = DB_STATE_NOTABLES;
@@ -1427,7 +1507,25 @@ void run_db_interact(MYSQL *con) {
 					}
 
 					// command bar
-					display_cmdf("TABLES", 6, "[ent]{s}elect-100", "{k}eys", "{d}escribe", "show-{c}reate", "[tab]mode", "e{x}it");// "s/enter:select-100 | k:keys | d:describe | tab:next | x:close");
+					if (env_has_mysqldump)
+						display_cmdf("TABLES", 7,
+							"[ent]{s}elect-100",
+							"{k}eys",
+							"{d}escribe",
+							"show-{c}reate",
+							"[tab]mode",
+							"d{u}mp",
+							"e{x}it"
+						);
+					else
+						display_cmdf("TABLES", 6,
+							"[ent]{s}elect-100",
+							"{k}eys",
+							"{d}escribe",
+							"show-{c}reate",
+							"[tab]mode",
+							"e{x}it"
+						);
 					break;
 				}
 				case INTERACT_STATE_QUERY:
@@ -1535,6 +1633,10 @@ void run_db_interact(MYSQL *con) {
 					switch (key) {
 						case KEY_x:
 							db_state = DB_STATE_END;
+							break;
+						case KEY_u:
+							// run mysql dump for conneted database
+							run_mysqldump(db_name);
 							break;
 						case KEY_TAB:
 						case KEY_BTAB:
@@ -1888,6 +1990,10 @@ int main(int argc, char **argv) {
 					getchar();
 				}
 
+				env_has_cwd = true;
+				if (getcwd(env_cwd, sizeof(env_cwd)) == NULL)
+					env_has_cwd = false;
+
 				// If we had some args that specify loading a connection directly then run that
 				// otherwise go to file connection loader
 				if (arg_host)
@@ -1951,15 +2057,14 @@ int main(int argc, char **argv) {
 				if (arg_confile) {
 					fp = fopen(arg_confile, "r");
 				} else {
-					char cwd[PATH_MAX];
-					if (getcwd(cwd, sizeof(cwd)) == NULL) {
+					if (!env_has_cwd) {
 						cli_error("failed to get cwd");
 						return 1;
 					}
 					char *fname = "connections.csv";
-					int flen = strlen(cwd) + 1 + strlen(fname);
+					int flen = strlen(env_cwd) + 1 + strlen(fname);
 					char fpath[flen];
-					sprintf(fpath, "%s/%s", cwd, fname);
+					sprintf(fpath, "%s/%s", env_cwd, fname);
 					fp = fopen(fpath, "r");
 				}
 
@@ -2140,10 +2245,13 @@ int main(int argc, char **argv) {
 				// otherwise connect to server naturally
 				unsigned int timeout = 3;
 				mysql_options(selected_mysql_conn, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
-				if (app_con->ssh_tunnel)
-					selected_mysql_conn = mysql_real_connect(selected_mysql_conn, LOCALHOST, app_con->user, app_con->pass, NULL, s_port, NULL, 0);
-				else
+				if (app_con->ssh_tunnel) {
+					app_con->sport = s_port;
+					selected_mysql_conn = mysql_real_connect(selected_mysql_conn, LOCALHOST, app_con->user, app_con->pass, NULL, app_con->sport, NULL, 0);
+				} else {
+					app_con->sport = 0;
 					selected_mysql_conn = mysql_real_connect(selected_mysql_conn, app_con->host, app_con->user, app_con->pass, NULL, app_con->iport, NULL, 0);
+				}
 
 				if (selected_mysql_conn == NULL) {
 					display_error(mysql_error(selected_mysql_conn));

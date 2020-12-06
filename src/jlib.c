@@ -44,10 +44,16 @@ void xlogf(const char *format, ...) {
 
 bool sysexists(const char *program) {
 	char buffer[256];
-	snprintf(buffer, 255, "command -v %s", program);
+	snprintf(buffer, 255, "command -v %s > /dev/null", program);
 	int sys_exit = system(buffer);
 	int cmd_exit = WEXITSTATUS(sys_exit);
 	return cmd_exit == 0;
+}
+
+int syscode(const char *cmd) {
+	int sys_exit = system(cmd);
+	int cmd_exit = WEXITSTATUS(sys_exit);
+	return cmd_exit;
 }
 
 // SYSTEM FUNCTIONS END
@@ -548,6 +554,8 @@ void ui_setup()
 	init_pair(COLOR_BLACK_YELLOW,COLOR_BLACK,	COLOR_YELLOW);
 	init_pair(COLOR_BLACK_MAGENTA,COLOR_BLACK,	COLOR_MAGENTA);
 	init_pair(COLOR_BLACK_RED,	COLOR_BLACK,	COLOR_RED);
+	init_pair(COLOR_BLACK_GREEN,	COLOR_BLACK,	COLOR_GREEN);
+	init_pair(COLOR_WHITE_GREEN,	COLOR_WHITE,	COLOR_GREEN);
 }
 
 WINDOW* ui_new_center_win(int offset_row, int offset_col, int rows, int cols)

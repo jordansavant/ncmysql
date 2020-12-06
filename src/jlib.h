@@ -73,6 +73,8 @@
 #define COLOR_BLACK_YELLOW	19
 #define COLOR_BLACK_MAGENTA	20
 #define COLOR_BLACK_RED		21
+#define COLOR_BLACK_GREEN	22
+#define COLOR_WHITE_GREEN	23
 
 // LOG HELPERS
 void xlogopen(const char *location, char *mode);
@@ -82,6 +84,7 @@ void xlogf(const char *format, ...);
 
 // SYSTEM FUNCTIONS
 bool sysexists(const char *program);
+int syscode(const char *cmd);
 
 // MATH FUNCTIONS
 int maxi(int a, int b);
