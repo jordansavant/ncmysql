@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <limits.h>
+#include <time.h>
 #include "jlib.h"
 #include "pass.h"
 
@@ -1270,6 +1271,12 @@ void run_mysqldump(char *database) {
 	if (!env_has_mysqldump)
 		return;
 
+	// construct a timestamp
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+	char timestamp[64];
+	snprintf(timestamp, 63, "%04d-%02d-%02d_%02d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
 	// how do we temporarily disable ncurses and go to a command prompt?
 	// then prepopulate it with a command
 	//endwin();
@@ -1277,43 +1284,46 @@ void run_mysqldump(char *database) {
 	char display[512];
 
 	if (app_con->ssh_tunnel)
-		snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s.sql 2>/dev/null",
+		snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s_%s.sql 2>/dev/null",
 			LOCALHOST,
 			app_con->sport,
 			app_con->user,
 			app_con->pass,
 			database,
 			env_cwd,
-			database
+			database,
+			timestamp
 		);
 	else
 		if (app_con->iport != 0)
-			snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s.sql 2>/dev/null",
+			snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s_%s.sql 2>/dev/null",
 				app_con->host,
 				app_con->iport,
 				app_con->user,
 				app_con->pass,
 				database,
 				env_cwd,
-				database
+				database,
+				timestamp
 			);
 		else
-			snprintf(buffer, 511, "mysqldump -h '%s' -u '%s' -p'%s' '%s' > %s/%s.sql 2>/dev/null",
+			snprintf(buffer, 511, "mysqldump -h '%s' -u '%s' -p'%s' '%s' > %s/%s_%s.sql 2>/dev/null",
 				app_con->host,
 				app_con->user,
 				app_con->pass,
 				database,
 				env_cwd,
-				database
+				database,
+				timestamp
 			);
-	snprintf(display, 511, "%s > %s/%s.sql", database, env_cwd, database);
+	snprintf(display, 511, "%s > %s/%s_%s.sql", database, env_cwd, database, timestamp);
 	display_strf_color(COLOR_WHITE_RED, "MYSQLDUMP: %s [Y/n]?", display);
 	switch (getch()) {
 		case KEY_y:
 			display_strf_color(COLOR_BLACK_CYAN, "DUMPING...");
 			int ec = syscode(buffer);
-            if (ec != 0)
-                display_error("Error with dump command");
+			if (ec != 0)
+				display_error("Error with dump command");
 			break;
 		default:
 			return;
@@ -1340,7 +1350,7 @@ void run_db_interact(MYSQL *con) {
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
 			query_state = QUERY_STATE_COMMAND;
-            the_err_code = -1;
+			the_err_code = -1;
 
 			if (tbl_count == 0)
 				db_state = DB_STATE_NOTABLES;
