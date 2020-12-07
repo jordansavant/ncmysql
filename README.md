@@ -9,8 +9,8 @@ An ncurses explorer and client for MySQL databases written in C
 ```
 Usage:
   ./bin/main.out -i help
-  ./bin/main.out -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host] [-g log-file]
-  ./bin/main.out -f connection-file=connections.csv [-d delimeter=,] [-g log-file]
+  ./bin/main.out -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host] [-g log-file] [-b dump-dir]
+  ./bin/main.out -f connection-file=connections.csv [-d delimeter=,] [-g log-file] [-b dump-dir]
 ```
 
 The binary runs in two modes: one to directly connect to a host similar to the mysql cli client, and the second reads from a connections csv file.
@@ -24,6 +24,8 @@ Running with file flags `-fd` will read a CSV file of connections in the format:
 If no options are presented it will look within the current working directory for a `connections.csv` file.
 
 If option `-g` provides a writable file, it will be used as a debug log which you can view for run time information.
+
+If option `-b` provides a directory it will be used for the mysql dump locations, otherwise it will use the current working directory.
 
 ## Building
 
