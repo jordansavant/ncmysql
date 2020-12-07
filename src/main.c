@@ -83,6 +83,7 @@ char env_cwd[PATH_MAX];
 bool env_has_cwd = false;
 bool env_has_mysqldump = false;
 bool env_has_mysqlcli = false;
+char *env_dumpdir = NULL;
 
 //////////////////////////////////////
 // STATE MACHINES
@@ -1284,39 +1285,39 @@ void run_mysqldump(char *database) {
 	char display[512];
 
 	if (app_con->ssh_tunnel)
-		snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s_%s.sql 2>/dev/null",
+		snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' '%s' > '%s/%s_%s.sql' 2>/dev/null",
 			LOCALHOST,
 			app_con->sport,
 			app_con->user,
 			app_con->pass,
 			database,
-			env_cwd,
+			env_dumpdir,
 			database,
 			timestamp
 		);
 	else
 		if (app_con->iport != 0)
-			snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' %s > %s/%s_%s.sql 2>/dev/null",
+			snprintf(buffer, 511, "mysqldump -h '%s' -P '%d' -u '%s' -p'%s' '%s' > '%s/%s_%s.sql' 2>/dev/null",
 				app_con->host,
 				app_con->iport,
 				app_con->user,
 				app_con->pass,
 				database,
-				env_cwd,
+				env_dumpdir,
 				database,
 				timestamp
 			);
 		else
-			snprintf(buffer, 511, "mysqldump -h '%s' -u '%s' -p'%s' '%s' > %s/%s_%s.sql 2>/dev/null",
+			snprintf(buffer, 511, "mysqldump -h '%s' -u '%s' -p'%s' '%s' > '%s/%s_%s.sql' 2>/dev/null",
 				app_con->host,
 				app_con->user,
 				app_con->pass,
 				database,
-				env_cwd,
+				env_dumpdir,
 				database,
 				timestamp
 			);
-	snprintf(display, 511, "%s > %s/%s_%s.sql", database, env_cwd, database, timestamp);
+	snprintf(display, 511, "%s > %s/%s_%s.sql", database, env_dumpdir, database, timestamp);
 	display_strf_color(COLOR_WHITE_RED, "MYSQLDUMP: %s [Y/n]?", display);
 	switch (getch()) {
 		case KEY_y:
@@ -1889,8 +1890,8 @@ char *program_name;
 void cli_usage(FILE* f) {
 	fprintf(f, "Usage:\n");
 	fprintf(f, "  %s -i help\n", program_name);
-	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host] [-g log-file]\n", program_name);
-	fprintf(f, "  %s -f connection-file=connections.csv [-d delimeter=,] [-g log-file]\n", program_name);
+	fprintf(f, "  %s -h mysql-host [-l port=3306] -u mysql-user [-p mysql-pass] [-s ssh-tunnel-host] [-g log-file] [-b dump-dir]\n", program_name);
+	fprintf(f, "  %s -f connection-file=connections.csv [-d delimeter=,] [-g log-file] [-b dump-dir]\n", program_name);
 }
 
 void cli_error(char *err) {
@@ -1907,13 +1908,13 @@ void cli_error(char *err) {
 
 // note, im just referencing argv, not copying them into new buffers, and argc/argv
 // "array shall be modifiable by the program, and retain their last-stored values between program startup and program termination."
-char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL, *arg_logfile=NULL;
+char *arg_host=NULL, *arg_port=NULL, *arg_user=NULL, *arg_pass=NULL, *arg_tunnel=NULL, *arg_confile=NULL, *arg_logfile=NULL, *arg_dumpdir=NULL;
 char arg_delimeter = ',';
 bool arg_info = false;
 int parseargs(int argc, char **argv) {
 	opterr = 0; // hide error output
 	int c;
-	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:g:")) != -1) {
+	while ((c = getopt(argc, argv, "ih:l:u:p:s:f:d:g:b:")) != -1) {
 		switch (c) {
 			case 'i': arg_info = true; break;
 			case 'h': arg_host = optarg; break;
@@ -1924,6 +1925,7 @@ int parseargs(int argc, char **argv) {
 			case 'f': arg_confile = optarg; break;
 			case 'd': arg_delimeter = optarg[0]; break;
 			case 'g': arg_logfile = optarg; break;
+			case 'b': arg_dumpdir = optarg; break;
 			case '?': // appears if unknown option when opterr=0
 				if (optopt == 'h')
 					cli_error("-h missing mysql-host");
@@ -1966,7 +1968,7 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 
-	//printf("h:%s l:%s u:%s p:%s s:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel);
+	//printf("h:%s l:%s u:%s p:%s s:%s b:%s\n", arg_host, arg_port, arg_user, arg_pass, arg_tunnel, arg_dumpdir);
 	if (arg_logfile && strlen(arg_logfile))
 		xlogopen(arg_logfile, "w+");
 
@@ -2003,6 +2005,16 @@ int main(int argc, char **argv) {
 				env_has_cwd = true;
 				if (getcwd(env_cwd, sizeof(env_cwd)) == NULL)
 					env_has_cwd = false;
+
+				if (arg_dumpdir)
+					env_dumpdir = arg_dumpdir;
+				else
+					env_dumpdir = env_cwd;
+				// trim trailing slash
+				int eddlen = strlen(env_dumpdir);
+				if (eddlen > 0)
+					if (env_dumpdir[eddlen - 1] == '/')
+						env_dumpdir[eddlen - 1] = '\0';
 
 				// If we had some args that specify loading a connection directly then run that
 				// otherwise go to file connection loader
