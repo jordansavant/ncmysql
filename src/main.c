@@ -487,7 +487,7 @@ void run_con_select() {
 
 	// allocate window for db menu
 	int frame_width = width + 5;// 7; // |_>_[label]_|
-	int frame_height = app_con_count + 2;
+	int frame_height = mini(app_con_count, 16) + 2;
 	int offset_rows = MENU_WIN_Y;
 
 	WINDOW *con_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
@@ -622,7 +622,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			}
 			// allocate window for db menu
 			int frame_width = dblen + 5;// 7; // |_>_[label]_|
-			int frame_height = num_rows + 2;
+			int frame_height = mini(num_rows, 16) + 2;
 			int offset_rows = MENU_WIN_Y;
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
@@ -2187,12 +2187,16 @@ int main(int argc, char **argv) {
 						app_cons[i]->host = strdup(f_host);
 						if (f_port)
 							app_cons[i]->port = strdup(f_port);
+						else
+							app_cons[i]->port = strdup("3306");
 						app_cons[i]->user = strdup(f_user);
 						app_cons[i]->pass = strdup(f_pass);
 						if (f_tunnel)
 							app_cons[i]->ssh_tunnel = strdup(f_tunnel);
 						if (f_port)
 							app_cons[i]->iport = atoi(f_port);
+						else
+							app_cons[i]->iport = 3306;
 					} else {
 						xlogf("skipping connection entry %d\n", i);
 					}
