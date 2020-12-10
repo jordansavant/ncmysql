@@ -154,6 +154,7 @@ WINDOW* cell_pad;
 #define ERR_WIN_W	48
 #define ERR_WIN_H	12
 #define QUERY_WIN_H	12
+#define MENU_WIN_Y	10
 
 WINDOW* tbl_pad = NULL;
 int tbl_index = 0;
@@ -356,12 +357,63 @@ void display_str(char *str) {
 	display_strf("%s", str);
 }
 
+
+int nonerrlinepos = 0;
+void display_nonerror_on_line(const char *line) {
+	wmove(error_window, 1 + nonerrlinepos++, 2);
+	waddstr(error_window, line);
+};
+void display_nonerror(const char *string, bool closeable) {
+	// clear all of the application
+	clear();
+	refresh();
+
+	// because the mac version of ncurses does not handle
+	// wbkgd commands correctly i will need to fill it manually
+	wattrset(error_window, COLOR_PAIR(COLOR_WHITE_BLUE));
+	int my, mx;
+	getmaxyx(error_window, my, mx);
+	for (int r=0; r<my; r++) {
+		for (int c=0; c<mx; c++) {
+			wmove(error_window, r, c);
+			waddch(error_window, ' ');
+		}
+	}
+
+	// render the error message
+	nonerrlinepos = 0;
+	wordwrap(string, ERR_WIN_W - 4, display_nonerror_on_line); // avoid gcc nested function supporta
+	wrefresh(error_window);
+	getch();
+
+	if (closeable) {
+		// render x: close
+		wmove(error_window, ERR_WIN_H - 2, 2);
+		waddch(error_window, 'e');
+		wattrset(error_window, COLOR_PAIR(COLOR_WHITE_BLUE) | A_UNDERLINE);
+		waddch(error_window, 'x');
+		wattrset(error_window, COLOR_PAIR(COLOR_WHITE_BLUE));
+		waddstr(error_window, "it/");
+
+		wattrset(error_window, COLOR_PAIR(COLOR_WHITE_BLUE) | A_UNDERLINE);
+		waddch(error_window, 'c');
+		wattrset(error_window, COLOR_PAIR(COLOR_WHITE_BLUE));
+		waddstr(error_window, "lose");
+
+		int c;
+		do {
+			wrefresh(error_window);
+			c = getch();
+		} while (c != KEY_x && c != KEY_c);
+	}
+	clear(); refresh();
+}
+
 int errlinepos = 0;
 void display_error_on_line(const char *line) {
 	wmove(error_window, 3 + errlinepos++, 2);
 	waddstr(error_window, line);
 };
-
 void display_error(const char *string) {
 	// clear all of the application
 	clear();
@@ -387,14 +439,22 @@ void display_error(const char *string) {
 
 	// render x: close
 	wmove(error_window, ERR_WIN_H - 2, 2);
-	waddstr(error_window, "[x]close");
-	//waddch(error_window, 'c');
-	//wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
-	//waddstr(error_window, "lose");
+	waddch(error_window, 'e');
+	wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED) | A_UNDERLINE);
+	waddch(error_window, 'x');
+	wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+	waddstr(error_window, "it/");
 
+	wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED) | A_UNDERLINE);
+	waddch(error_window, 'c');
+	wattrset(error_window, COLOR_PAIR(COLOR_YELLOW_RED));
+	waddstr(error_window, "lose");
+
+	int c;
 	do {
 		wrefresh(error_window);
-	} while (getch() != KEY_x);
+		c = getch();
+	} while (c != KEY_x && c != KEY_c);
 	clear(); refresh();
 }
 
@@ -428,7 +488,7 @@ void run_con_select() {
 	// allocate window for db menu
 	int frame_width = width + 5;// 7; // |_>_[label]_|
 	int frame_height = app_con_count + 2;
-	int offset_rows = 10;
+	int offset_rows = MENU_WIN_Y;
 
 	WINDOW *con_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 	wbkgd(con_win, COLOR_PAIR(COLOR_WHITE_BLUE));
@@ -527,6 +587,7 @@ void on_db_select(char *database) {
 int menu_select_pos = 0;
 void run_db_select(MYSQL *con, struct Connection *app_con) {
 
+	clear(); refresh();
 	int sy,sx;
 	getmaxyx(stdscr, sy, sx);
 	move(8, sx / 2 - 4);
@@ -562,7 +623,7 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			// allocate window for db menu
 			int frame_width = dblen + 5;// 7; // |_>_[label]_|
 			int frame_height = num_rows + 2;
-			int offset_rows = 10;
+			int offset_rows = MENU_WIN_Y;
 			//WINDOW *db_win = ui_new_center_win(offset_rows, frame_height, frame_width, 0);
 			WINDOW *db_win = ui_new_center_win(offset_rows, 0, frame_height, frame_width);
 			wbkgd(db_win, COLOR_PAIR(COLOR_WHITE_BLUE));
@@ -2187,6 +2248,18 @@ int main(int argc, char **argv) {
 					app_state = APP_STATE_END;
 					break;
 				}
+
+				// display connecting status
+				int sx,sy; getmaxyx(stdscr, sy, sx);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLUE));
+				int y=MENU_WIN_Y, x=(sx / 2) - 6;
+				move(y++, x);
+				addstr("            ");
+				move(y++, x);
+				addstr(" CONNECTING ");
+				move(y++, x);
+				addstr("            ");
+				refresh();
 
 				// once one has been established run the connect
 				if (app_con->ssh_tunnel != NULL)
