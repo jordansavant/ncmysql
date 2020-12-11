@@ -407,9 +407,16 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 						wmove(window, winy, winx);
 						nc_paste(window, contents);
 					}
-					// reset back to our our position
+					// reset back to our our position and insert newline
 					wmove(window, start_winy, start_winx);
+					// copy contents after my position
+					chtype contents[maxx];
+					nc_cutline(window, contents, start_winx, maxx);
+					// insert new line
 					waddch(window, '\n');
+					// paste into new line
+					nc_paste(window, contents);
+					wmove(window, start_winy + 1, 0);
 				}
 				if (key == '\t') {
 					// TODO this does not deal well when injecting into middle of string
