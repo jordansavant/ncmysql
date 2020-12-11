@@ -382,6 +382,33 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 					wmove(window, winy, winx+1);
 				}
 				if (key == '\n') { // new line
+					// TODO this deletes the remainder of the line, it needs to copy the contents and push it down
+					// beneath and shift all lower lines down one
+
+					// shift all lower lines down by one, if the last one, we can delete it \ ? /
+					int winy, winx;
+					getyx(window, winy, winx); // winx is position in line
+					int start_winy=winy, start_winx=winx;
+					// start at the second to last and copy contents from the one above
+					for (int y=maxy-1; y > start_winy + 1; y--) {
+						winy = clampi(y, 0, maxy); winx = 0;
+						wmove(window, winy, winx);
+
+						// clear my line
+						chtype contents[maxx];
+						nc_cutline(window, contents, 0, maxx);
+
+						// get preceding line
+						winy = clampi(y - 1, 0, maxy); winx = 0;
+						wmove(window, winy, winx);
+						nc_cutline(window, contents, 0, maxx);
+						// paste into my current line
+						winy = clampi(y, 0, maxy); winx = 0;
+						wmove(window, winy, winx);
+						nc_paste(window, contents);
+					}
+					// reset back to our our position
+					wmove(window, start_winy, start_winx);
 					waddch(window, '\n');
 				}
 				if (key == '\t') {
