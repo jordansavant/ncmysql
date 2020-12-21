@@ -384,6 +384,15 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 					}
 					wmove(window, newy, newx); // move back to pre-push point
 				}
+				else if (key == KEY_END) {
+					int target_winx = nc_mveol(window);
+				}
+				else if (key == KEY_HOME) {
+					// find last position of current line
+					int winy, winx;
+					getyx(window, winy, winx); // winx is position in line
+					wmove(window, winy, 0);
+				}
 				else if (key == '\n') { // new line
 					// TODO this deletes the remainder of the line, it needs to copy the contents and push it down
 					// beneath and shift all lower lines down one
