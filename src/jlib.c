@@ -364,7 +364,7 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 				// TEXT EDITOR
 			default:
 				// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
-				if (key > 31 && key < 127) { // ascii input
+				if ((key > 31 && key < 127) || key == '\t') { // ascii input
 					int winy, winx;
 					getyx(window, winy, winx); // winx is position in line
 					int sizeleft = maxx - winx - 1;
@@ -373,15 +373,18 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 					winchstr(window, contents); // this captures everything after the cursor
 					// insert the character into the line
 					waddch(window, key);
+					int newy, newx; // get the position after we added the char, works for text or space characters
+					getyx(window, newy, newx);
+
 					// reinsert the remaining characters
 					for (int i=0; i < sizeleft; i++) {
 						char c = contents[i] & A_CHARTEXT;
 						if (c > 31 && c < 127)
 							waddch(window, contents[i]);
 					}
-					wmove(window, winy, winx+1);
+					wmove(window, newy, newx); // move back to pre-push point
 				}
-				if (key == '\n') { // new line
+				else if (key == '\n') { // new line
 					// TODO this deletes the remainder of the line, it needs to copy the contents and push it down
 					// beneath and shift all lower lines down one
 
@@ -418,11 +421,7 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 					nc_paste(window, contents);
 					wmove(window, start_winy + 1, 0);
 				}
-				if (key == '\t') {
-					// TODO this does not deal well when injecting into middle of string
-					waddch(window, '\t');
-				}
-				if (key == KEY_BACKSPACE || key == KEY_DELETE) { // regular delete
+				else if (key == KEY_BACKSPACE || key == KEY_DELETE) { // regular delete
 					int winy, winx;
 					getyx(window, winy, winx); // winx is position in line
 

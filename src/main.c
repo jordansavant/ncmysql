@@ -1622,9 +1622,9 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (the_num_rows > 0 && focus_cell_r > 0 && can_edit_focused_field(false))
-						display_cmdf("RESULTS", 4, "{v}iew", "{e}dit", "[tab]mode", "{e}xit"); // editable field
+						display_cmdf("RESULTS", 4, "{v}iew", "{e}dit", "[tab]mode", "e{x}it"); // editable field
 					else if (the_num_rows > 0 && focus_cell_r > 0)
-						display_cmdf("RESULTS", 3, "{v}iew", "[tab]mode", "{e}xit"); // viewable field
+						display_cmdf("RESULTS", 3, "{v}iew", "[tab]mode", "e{x}it"); // viewable field
 					else if (the_num_rows > 0 && focus_cell_r == 0) // header
 						display_cmdf("RESULTS", 3, "{s}ort", "[tab]mode", "e{x}it");
 					else
