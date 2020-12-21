@@ -610,8 +610,15 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			xlog(" DB_SELECT_STATE_SELECT_DB");
 			//die("this is a test");
 			// Get DBs
-			int num_fields, num_rows;
-			MYSQL_RES *result = con_select(con, &num_fields, &num_rows);
+			int num_fields, num_rows, num_affect_rows, errcode;
+			MYSQL_RES *result = db_query(con, "SHOW DATABASES", &num_fields, &num_rows, &num_affect_rows, &errcode);
+			if (!result && errcode > 0) {
+				display_error(mysql_error(selected_mysql_conn));
+			}
+			else if (num_rows == 0) {
+				display_error("No databases within this connection");
+				// TODO what to do here?
+			}
 
 			// determine widest db name
 			int dblen = 0;

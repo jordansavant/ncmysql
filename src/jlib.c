@@ -712,21 +712,6 @@ void ui_anchor_center(WINDOW *win, int rows, int cols, int yoff, int xoff)
 ///////////////////////////////////////
 // MYSQL FUNCTIONS START
 
-MYSQL_RES* con_select(MYSQL *con, int *num_fields, int *num_rows) {
-	if (mysql_query(con, "SHOW DATABASES")) {
-		die(mysql_error(con));
-	}
-
-	MYSQL_RES *result = mysql_store_result(con);
-	if (result == NULL) {
-		die(mysql_error(con));
-	}
-
-	*num_fields = mysql_num_fields(result);
-	*num_rows = mysql_num_rows(result);
-	return result;
-}
-
 MYSQL_RES* db_queryf(MYSQL *con, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode, char *format, ...) {
 	char query[2056]; // max query size hope we dont go over this
 	va_list argptr;
@@ -833,20 +818,6 @@ int col_size(MYSQL_RES* result, int index) {
 	mysql_data_seek(result, 0);
 	return len;
 }
-
-//bool get_database(MYSQL *con, char *buf) {
-//	int nf, nr;
-//	MYSQL_RES* result = con_select(con, "SELECT DATABASE()", &nf, &nr);
-//	if (result == NULL)
-//		return false;
-//	if (nr == 0 || nf == 0)
-//		return false;
-//	MYSQL_ROW row = mysql_fetch_row(result);
-//	if (row == NULL)
-//		return false;
-//	buf = row[0];
-//	return true;
-//}
 
 // MYSQL FUNCTIONS END
 ///////////////////////////////////////
