@@ -752,10 +752,11 @@ MYSQL_RES* db_query(MYSQL *con, char *query, int *num_fields, int *num_rows, int
 	return db_queryf(con, num_fields, num_rows, num_affect_rows, errcode, "%s", query);
 }
 
-void db_select(MYSQL *con, char *db) {
+bool db_select(MYSQL *con, char *db) {
 	if (mysql_select_db(con, db)) {
-		die(mysql_error(con));
+		return false;
 	}
+	return true;
 }
 
 void db_get_db(MYSQL *con, char *buffer, int len) {

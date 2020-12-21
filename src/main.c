@@ -414,7 +414,7 @@ void display_error_on_line(const char *line) {
 	wmove(error_window, 3 + errlinepos++, 2);
 	waddstr(error_window, line);
 };
-void display_error(const char *string) {
+void display_error(const char *string, bool fatal) {
 	// clear all of the application
 	clear();
 	refresh();
@@ -456,6 +456,11 @@ void display_error(const char *string) {
 		c = getch();
 	} while (c != KEY_x && c != KEY_c);
 	clear(); refresh();
+
+	if (fatal) {
+		endwin();
+		exit(1);
+	}
 }
 
 
@@ -575,7 +580,9 @@ void run_con_select() {
 
 void on_db_select(char *database) {
 	//xlogf("db select %s\n", database);
-	db_select(selected_mysql_conn, database);
+	if (!db_select(selected_mysql_conn, database))
+		display_error(mysql_error(selected_mysql_conn), 1);
+
 	db_selected = true;
 
 	// set our db name
@@ -613,10 +620,10 @@ void run_db_select(MYSQL *con, struct Connection *app_con) {
 			int num_fields, num_rows, num_affect_rows, errcode;
 			MYSQL_RES *result = db_query(con, "SHOW DATABASES", &num_fields, &num_rows, &num_affect_rows, &errcode);
 			if (!result && errcode > 0) {
-				display_error(mysql_error(selected_mysql_conn));
+				display_error(mysql_error(selected_mysql_conn), 1);
 			}
 			else if (num_rows == 0) {
-				display_error("No databases within this connection");
+				display_error("No databases within this connection", 1);
 				// TODO what to do here?
 			}
 
@@ -776,7 +783,7 @@ void execute_query(bool clear) {
 	xlog(the_query);
 	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &the_err_code);
 	if (!the_result && the_err_code > 0) { // inserts have null responses
-		display_error(mysql_error(selected_mysql_conn));
+		display_error(mysql_error(selected_mysql_conn), 0);
 	}
 
 	// resize result pad to match size of result set plus its dividers etc
@@ -1115,26 +1122,26 @@ bool can_edit_focused_field(bool display_errors) {
 	MYSQL_FIELD *f = get_focus_field();
 	if (f == NULL) {
 		if (display_errors)
-			display_error("Unable to locate field");
+			display_error("Unable to locate field", 0);
 		return false;
 	}
 
 	if (!f->table) {
 		if (display_errors)
-			display_error("Unable to determine table associated with this result field");
+			display_error("Unable to determine table associated with this result field", 0);
 		return false;
 	}
 
 	if (!f->db) {
 		if (display_errors)
-			display_error("Could not determine database for selected field");
+			display_error("Could not determine database for selected field", 0);
 		return false;
 	}
 
 	for (int i=0; i < SPECIAL_DB_COUNT; i++) {
 		if (strcmp(f->db, special_dbs[i]) == 0) {
 			if (display_errors)
-				display_error("System database field cannot be modified");
+				display_error("System database field cannot be modified", 0);
 			return false;
 		}
 	}
@@ -1149,7 +1156,7 @@ bool can_edit_focused_field(bool display_errors) {
 	strclr(primary_key, 64);
 	if (!db_get_primary_key(selected_mysql_conn, f->table, primary_key, 64)) {
 		if (display_errors)
-			display_error("No primary key could be determined for this field's table");
+			display_error("No primary key could be determined for this field's table", 0);
 		return false;
 	}
 
@@ -1180,7 +1187,7 @@ void run_edit_focused_cell() {
 	strclr(primary_val, 256);
 	bool pk_val_found = get_focus_row_val(primary_key, primary_val, 256);
 	if (!pk_val_found) {
-		display_error("No primary key value be determined for this field's row");
+		display_error("No primary key value be determined for this field's row", 0);
 		return;
 	}
 
@@ -1188,7 +1195,7 @@ void run_edit_focused_cell() {
 	char buffer[imaxf];
 	strclr(buffer, imaxf);
 	if (!get_focus_data(buffer, imaxf, false)) {
-		display_error("Unable to fetch field contents for editing");
+		display_error("Unable to fetch field contents for editing", 0);
 		return;
 	}
 
@@ -1264,7 +1271,7 @@ void run_edit_focused_cell() {
 							);
 						}
 						if (!result && ec > 0) { // inserts have null responses
-							display_error(mysql_error(selected_mysql_conn));
+							display_error(mysql_error(selected_mysql_conn), 0);
 						}
 						// refresh result query
 						execute_query(false);
@@ -1292,7 +1299,7 @@ void run_view_focused_cell() {
 
 	MYSQL_FIELD *f = get_focus_field();
 	if (f == NULL) {
-		display_error("Unable to locate field");
+		display_error("Unable to locate field", 0);
 		return;
 	}
 
@@ -1303,7 +1310,7 @@ void run_view_focused_cell() {
 	char buffer[imaxf];
 	strclr(buffer, imaxf);
 	if (!get_focus_data(buffer, imaxf, false)) {
-		display_error("Unable to fetch field contents for viewing");
+		display_error("Unable to fetch field contents for viewing", 0);
 		return;
 	}
 
@@ -1392,7 +1399,7 @@ void run_mysqldump(char *database) {
 			display_strf_color(COLOR_BLACK_CYAN, "DUMPING...");
 			int ec = syscode(buffer);
 			if (ec != 0)
-				display_error("Error with dump command");
+				display_error("Error with dump command", 0);
 			break;
 		default:
 			return;
@@ -1432,7 +1439,7 @@ void run_db_interact(MYSQL *con) {
 			xlog(" DB_STATE_NOTABLES");
 			// if there are no tables we need to print an interrupt error
 			// and return to db selection
-			display_error("No tables were found in the selected database");
+			display_error("No tables were found in the selected database", 0);
 
 			clear();
 			db_state = DB_STATE_INTERACT;
@@ -2234,7 +2241,7 @@ int main(int argc, char **argv) {
 				app_setup(); // setup ncurses control
 
 				if (app_con_count == 0) {
-					display_error("No connections defined");
+					display_error("No connections defined", 0);
 					app_state = APP_STATE_END;
 				} else {
 					app_state = APP_STATE_CONNECTION_SELECT;
@@ -2287,7 +2294,7 @@ int main(int argc, char **argv) {
 				// If an ssh tunnel was requested lets fork one
 				int prc = fork();
 				if (prc < 0) {
-					display_error("Unable to create child process for SSH tunnel");
+					display_error("Unable to create child process for SSH tunnel", 0);
 					app_state = APP_STATE_END;
 					break;
 				}
@@ -2325,7 +2332,7 @@ int main(int argc, char **argv) {
 					xlogf("- PARENT SEES CHILD DONE %d\n", child_exit);
 					if (child_exit == 1) {
 						// ssh tunnel failed
-						display_error("Failed to establish SSH tunnel: all ports are taken or invalid ssh host");
+						display_error("Failed to establish SSH tunnel: all ports are taken or invalid ssh host", 0);
 						app_state = APP_STATE_END;
 					} else {
 						app_state = APP_STATE_CONNECT;
@@ -2342,7 +2349,7 @@ int main(int argc, char **argv) {
 				// create mysql connection
 				selected_mysql_conn = mysql_init(NULL);
 				if (selected_mysql_conn == NULL) {
-					display_error(mysql_error(selected_mysql_conn));
+					display_error(mysql_error(selected_mysql_conn), 0);
 					app_state = APP_STATE_END;
 					break;
 				}
@@ -2360,7 +2367,7 @@ int main(int argc, char **argv) {
 				}
 
 				if (selected_mysql_conn == NULL) {
-					display_error(mysql_error(selected_mysql_conn));
+					display_error(mysql_error(selected_mysql_conn), 0);
 					mysql_close(selected_mysql_conn);
 					app_state = APP_STATE_END;
 					break;
