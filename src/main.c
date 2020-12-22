@@ -128,6 +128,13 @@ enum INTERACT_STATE {
 };
 enum INTERACT_STATE interact_state = INTERACT_STATE_TABLE_LIST;
 
+enum TABLE_STATE {
+	TABLE_STATE_LIST,
+	TABLE_STATE_CREATE,
+	TABLE_STATE_MODIFY,
+};
+enum TABLE_STATE table_state = TABLE_STATE_LIST;
+
 enum QUERY_STATE {
 	QUERY_STATE_COMMAND,
 	QUERY_STATE_EDIT,
@@ -384,7 +391,6 @@ void display_nonerror(const char *string, bool closeable) {
 	nonerrlinepos = 0;
 	wordwrap(string, ERR_WIN_W - 4, display_nonerror_on_line); // avoid gcc nested function supporta
 	wrefresh(error_window);
-	getch();
 
 	if (closeable) {
 		// render x: close
@@ -1406,6 +1412,13 @@ void run_mysqldump(char *database) {
 	}
 }
 
+
+void run_table_create() {
+	display_nonerror("CREATE TABLE", true);
+}
+
+
+
 bool cell_sort_asc = true;
 void run_db_interact(MYSQL *con) {
 
@@ -1425,6 +1438,7 @@ void run_db_interact(MYSQL *con) {
 			refresh_tables();
 
 			interact_state = INTERACT_STATE_TABLE_LIST;
+			table_state = TABLE_STATE_LIST;
 			query_state = QUERY_STATE_COMMAND;
 			the_err_code = -1;
 
@@ -1598,7 +1612,9 @@ void run_db_interact(MYSQL *con) {
 							"[ent]{s}elect-100",
 							"{k}eys",
 							"{d}escribe",
-							"show-{c}reate",
+							"s{h}ow-create",
+							"{c}reate",
+							"{m}odify",
 							"[tab]mode",
 							"d{u}mp",
 							"e{x}it"
@@ -1608,7 +1624,9 @@ void run_db_interact(MYSQL *con) {
 							"[ent]{s}elect-100",
 							"{k}eys",
 							"{d}escribe",
-							"show-{c}reate",
+							"s{h}ow-create",
+							"{c}reate",
+							"{m}odify",
 							"[tab]mode",
 							"e{x}it"
 						);
@@ -1714,69 +1732,97 @@ void run_db_interact(MYSQL *con) {
 			switch (interact_state) {
 				case INTERACT_STATE_TABLE_LIST: {
 					xlog("  INTERACT_STATE_TABLE_LIST");
-					// listen for input
-					int key = getch();
-					switch (key) {
-						case KEY_x:
-							db_state = DB_STATE_END;
+					switch (table_state) {
+
+						case TABLE_STATE_LIST: {
+							xlog("   TABLE_STATE_LIST");
+
+							// listen for input
+							int key = getch();
+							switch (key) {
+								case KEY_x:
+									db_state = DB_STATE_END;
+									break;
+								case KEY_u:
+									// run mysql dump for conneted database
+									run_mysqldump(db_name);
+									break;
+								case KEY_TAB:
+								case KEY_BTAB:
+									if (key == KEY_TAB)
+										interact_state = INTERACT_STATE_QUERY;
+									else
+										interact_state = INTERACT_STATE_RESULTS;
+									result_rerender_full = true;
+									break;
+								case KEY_d:
+									if (tbl_result && tbl_count > 0) {
+										mysql_data_seek(tbl_result, tbl_index);
+										MYSQL_ROW r = mysql_fetch_row(tbl_result);
+										set_queryf("DESCRIBE %s", r[0]);
+										execute_query(true);
+									}
+									break;
+								case KEY_h:
+									if (tbl_result && tbl_count > 0) {
+										mysql_data_seek(tbl_result, tbl_index);
+										MYSQL_ROW r = mysql_fetch_row(tbl_result);
+										set_queryf("SHOW CREATE TABLE %s", r[0]);
+										execute_query(true);
+									}
+									break;
+								case KEY_k:
+									if (tbl_result && tbl_count > 0) {
+										mysql_data_seek(tbl_result, tbl_index);
+										MYSQL_ROW r = mysql_fetch_row(tbl_result);
+										set_queryf("SHOW KEYS FROM %s", r[0]);
+										execute_query(true);
+									}
+									break;
+								case KEY_s:
+								case KEY_RETURN: {
+									if (tbl_result && tbl_count > 0) {
+										mysql_data_seek(tbl_result, tbl_index);
+										MYSQL_ROW r = mysql_fetch_row(tbl_result);
+										set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
+										execute_query(true);
+									}
+									break;
+								}
+								case KEY_c:
+									// go to create table state
+									table_state = TABLE_STATE_CREATE;
+									break;
+								case KEY_m:
+									// go to modify table state
+									break;
+								case KEY_UP:
+								case KEY_DOWN:
+									if (key == KEY_UP)
+										tbl_index = (tbl_index - 1) % tbl_count;
+									if (key == KEY_DOWN)
+										tbl_index = (tbl_index + 1) % tbl_count;
+									if (tbl_index < 0)
+										tbl_index = tbl_count + tbl_index;
+									break;
+							} // eo input
+
 							break;
-						case KEY_u:
-							// run mysql dump for conneted database
-							run_mysqldump(db_name);
+						} // eo TABLE_STATE_LIST
+
+						case TABLE_STATE_CREATE:
+							xlog("   TABLE_STATE_CREATE");
+							run_table_create();
+							table_state = TABLE_STATE_LIST;
 							break;
-						case KEY_TAB:
-						case KEY_BTAB:
-							if (key == KEY_TAB)
-								interact_state = INTERACT_STATE_QUERY;
-							else
-								interact_state = INTERACT_STATE_RESULTS;
-							result_rerender_full = true;
+
+						case TABLE_STATE_MODIFY:
+							xlog("   TABLE_STATE_MODIFY");
 							break;
-						case KEY_d:
-							if (tbl_result && tbl_count > 0) {
-								mysql_data_seek(tbl_result, tbl_index);
-								MYSQL_ROW r = mysql_fetch_row(tbl_result);
-								set_queryf("DESCRIBE %s", r[0]);
-								execute_query(true);
-							}
-							break;
-						case KEY_c:
-							if (tbl_result && tbl_count > 0) {
-								mysql_data_seek(tbl_result, tbl_index);
-								MYSQL_ROW r = mysql_fetch_row(tbl_result);
-								set_queryf("SHOW CREATE TABLE %s", r[0]);
-								execute_query(true);
-							}
-							break;
-						case KEY_k:
-							if (tbl_result && tbl_count > 0) {
-								mysql_data_seek(tbl_result, tbl_index);
-								MYSQL_ROW r = mysql_fetch_row(tbl_result);
-								set_queryf("SHOW KEYS FROM %s", r[0]);
-								execute_query(true);
-							}
-							break;
-						case KEY_s:
-						case KEY_RETURN: {
-							if (tbl_result && tbl_count > 0) {
-								mysql_data_seek(tbl_result, tbl_index);
-								MYSQL_ROW r = mysql_fetch_row(tbl_result);
-								set_queryf("SELECT * FROM %s LIMIT 100", r[0]);
-								execute_query(true);
-							}
-							break;
-						}
-						case KEY_UP:
-						case KEY_DOWN:
-							if (key == KEY_UP)
-								tbl_index = (tbl_index - 1) % tbl_count;
-							if (key == KEY_DOWN)
-								tbl_index = (tbl_index + 1) % tbl_count;
-							if (tbl_index < 0)
-								tbl_index = tbl_count + tbl_index;
-							break;
-					}
-					break;
+
+					} // eo TABLE_STATE switch
+
+					break; // eo INTERACT_STATE_TABLE_LIST
 				}
 				case INTERACT_STATE_QUERY: {
 					xlog("  INTERACT_STATE_QUERY");
