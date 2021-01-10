@@ -1414,7 +1414,71 @@ void run_mysqldump(char *database) {
 
 
 void run_table_create() {
-	display_nonerror("CREATE TABLE", true);
+	clear();
+	refresh();
+
+	int sy, sx;
+	getmaxyx(stdscr, sy, sx);
+
+	// table create data
+	enum TC_MODE {
+		EDIT_NAME, EDIT_COLS, EDIT_RELS
+	};
+	enum TC_MODE tc_mode = EDIT_NAME;
+
+	char tbl_name[64];
+	strclr(tbl_name, 64);
+
+	WINDOW* name_win;
+	name_win = newwin(1, 64, 0,0);
+	// wresize(name_win, QUERY_WIN_H, sx - TBL_LIST_W - 1 - 2 - 1);
+	// mvwin(name_win, 0, TBL_LIST_W + 1 + 2 + 1); // plus 2 for gutter + 1 for spacing
+
+	// render form
+	bool run = true;
+	while (run) {
+		// render form
+		switch (tc_mode) {
+			case EDIT_NAME:
+				move(1, 1);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("TABLE NAME: ");
+				// edit the name
+				// switch (getch()) {
+				// 	case KEY_TAB: tc_mode = EDIT_COLS; break;
+				// 	case KEY_x: run = false; break;
+				// }
+
+				wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLACK));
+				mvwin(name_win, 1, 13);
+				nc_text_editor_win(name_win, tbl_name, 64);
+				tc_mode = EDIT_COLS;
+				break;
+			case EDIT_COLS:
+				move(1, 1);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("TABLE NAME: ");
+				switch (getch()) {
+					case KEY_TAB: tc_mode = EDIT_RELS; break;
+					case KEY_x: run = false; break;
+				}
+				break;
+			case EDIT_RELS:
+				move(1, 1);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("TABLE NAME: ");
+				switch (getch()) {
+					case KEY_TAB: tc_mode = EDIT_NAME; break;
+					case KEY_x: run = false; break;
+				}
+				break;
+		}
+	}
+
+	delwin(name_win);
+
+	clear();
+	refresh();
 }
 
 

@@ -394,8 +394,9 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 					wmove(window, winy, 0);
 				}
 				else if (key == '\n') { // new line
-					// TODO this deletes the remainder of the line, it needs to copy the contents and push it down
-					// beneath and shift all lower lines down one
+
+					if (maxy == 1)
+						break; // if one line tall, nothing to do
 
 					// shift all lower lines down by one, if the last one, we can delete it \ ? /
 					int winy, winx;
