@@ -285,7 +285,7 @@ void display_cmdf(char *mode, int arglen, ...) {
 	wattrset(cmd_window, COLOR_PAIR(COLOR_WHITE_BLACK));
 	va_list argptr;
 	va_start(argptr, arglen);
-	int pos = 12;
+	int pos = 14;
 	for (int i=0; i < arglen; i++) {
 		char* cmd = va_arg(argptr, char*);
 		wmove(cmd_window, 0, pos);
@@ -1238,7 +1238,7 @@ void run_edit_focused_cell() {
 				xlog(buffer);
 				strclr(edited, imaxf);
 				wmove(cell_pad, 0, 0);
-				nc_text_editor_pad(cell_pad, edited, imaxf, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+				nc_text_editor_pad(cell_pad, edited, imaxf, false, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				xlogf("[%s]\n", edited);
 
 				mode = CONFIRM;
@@ -1412,7 +1412,7 @@ void run_mysqldump(char *database) {
 	}
 }
 
-
+#define TBL_NAME_LEN 64
 void run_table_create() {
 	clear();
 	refresh();
@@ -1426,13 +1426,11 @@ void run_table_create() {
 	};
 	enum TC_MODE tc_mode = EDIT_NAME;
 
-	char tbl_name[64];
-	strclr(tbl_name, 64);
-
+	// name form
+	char tbl_name[TBL_NAME_LEN];
+	strclr(tbl_name, TBL_NAME_LEN);
 	WINDOW* name_win;
-	name_win = newwin(1, 64, 0,0);
-	// wresize(name_win, QUERY_WIN_H, sx - TBL_LIST_W - 1 - 2 - 1);
-	// mvwin(name_win, 0, TBL_LIST_W + 1 + 2 + 1); // plus 2 for gutter + 1 for spacing
+	name_win = newwin(1, TBL_NAME_LEN - 1, 0,0);
 
 	// render form
 	bool run = true;
@@ -1440,33 +1438,74 @@ void run_table_create() {
 		// render form
 		switch (tc_mode) {
 			case EDIT_NAME:
-				move(1, 1);
+				move(0,0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
+				addstr("TABLE NAME:");
 				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("TABLE NAME: ");
-				// edit the name
-				// switch (getch()) {
-				// 	case KEY_TAB: tc_mode = EDIT_COLS; break;
-				// 	case KEY_x: run = false; break;
-				// }
+				addstr(" ");
 
+				// cols
+				move(2, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("COLUMNS");
+
+				// foreigns
+				move(4, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("FOREIGN KEYS");
+
+				display_str("");
+				display_cmdf("TABLE NAME", 1, "[tab|esc]next");
+
+				// edit name
 				wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLACK));
-				mvwin(name_win, 1, 13);
-				nc_text_editor_win(name_win, tbl_name, 64);
+				mvwin(name_win, 0, 12);
+				nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, true);
 				tc_mode = EDIT_COLS;
+
 				break;
 			case EDIT_COLS:
-				move(1, 1);
+				// name
+				move(0, 0);
 				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
 				addstr("TABLE NAME: ");
+
+				// cols
+				move(2, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
+				addstr("COLUMNS");
+
+				// foreigns
+				move(4, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("FOREIGN KEYS");
+
+				display_str("");
+				display_cmdf("COLUMNS", 3, "{a}dd-col", "{d}elete-col", "[tab]next");
+
 				switch (getch()) {
 					case KEY_TAB: tc_mode = EDIT_RELS; break;
 					case KEY_x: run = false; break;
 				}
 				break;
 			case EDIT_RELS:
-				move(1, 1);
+				move(0,0);
 				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
 				addstr("TABLE NAME: ");
+
+				// cols
+				move(2, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+				addstr("COLUMNS");
+
+				// foreigns
+				move(4, 0);
+				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
+				addstr("FOREIGN KEYS");
+
+				display_str("");
+				display_cmdf("FOREIGN KEYS", 1, "[tab]next");
+
 				switch (getch()) {
 					case KEY_TAB: tc_mode = EDIT_NAME; break;
 					case KEY_x: run = false; break;
@@ -1926,7 +1965,7 @@ void run_db_interact(MYSQL *con) {
 						xlog("   QUERY_STATE_EDIT");
 
 						char buffer[QUERY_MAX];
-						nc_text_editor_win(query_window, buffer, QUERY_MAX);
+						nc_text_editor_win(query_window, buffer, QUERY_MAX, false);
 
 						// capture query
 						set_query(buffer);

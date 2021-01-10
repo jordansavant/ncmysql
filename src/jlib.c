@@ -275,15 +275,15 @@ char* scantok(char *line, int field_pos, char delim) {
 ///////////////////////////////////////
 // NCURSES FUNCTIONS START
 
-void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
-	nc_text_editor(pad, buffer, buffer_len, true, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, bool tab_exits, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+	nc_text_editor(pad, buffer, buffer_len, tab_exits, true, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 }
 
-void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len) {
-	nc_text_editor(win, buffer, buffer_len, false, 0, 0, 0, 0, 0, 0);
+void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len, bool tab_exits) {
+	nc_text_editor(win, buffer, buffer_len, tab_exits, false, 0, 0, 0, 0, 0, 0);
 }
 
-void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
 	curs_set(1);
 
 	// beg and end are screen coords of editor window
@@ -311,33 +311,6 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 			case KEY_ctrl_x:
 			case KEY_ESC: {
 				editing = false;
-
-				// capture and trim the contents of the window
-				// convert to character buffer for the line
-				chtype chtype_buffers[maxy][maxx];
-				strclr(buffer, buffer_len);
-				int buffi = 0;
-				for (int r=0; r < maxy; r++) {
-					wmove(window, r, 0);
-					winchstr(window, chtype_buffers[r]);
-					// to trim the line we should count backwards until the first character
-					// you see maxx + 1 because maxx is the final index, not the size
-
-					// convert chtypes to characters
-					int ccount = nc_strtrimlen(chtype_buffers[r], maxx);
-					if (maxx + 1 == ccount)
-						continue; // all characters are empty
-
-					// ccount is the number of characters on the end
-					int strsize = maxx - ccount + 1;
-					for (int c=0; c < strsize; c++) {
-						buffer[buffi++] = chtype_buffers[r][c] & A_CHARTEXT;
-					}
-					buffer[buffi++] = '\n';
-				}
-				// trim final newline
-				buffer[buffi-1] = '\0';
-
 				break;
 			}
 			// MOVE CURSOR
@@ -365,6 +338,10 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 			default:
 				// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 				if ((key > 31 && key < 127) || key == '\t') { // ascii input
+					if (key == '\t' && tab_exits) {
+						editing = false;
+						break;
+					}
 					int winy, winx;
 					getyx(window, winy, winx); // winx is position in line
 					int sizeleft = maxx - winx - 1;
@@ -495,6 +472,32 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool is_pad, i
 				break;
 		} // eo key switch
 	} // eo editing loop
+
+	// capture and trim the contents of the window
+	// convert to character buffer for the line
+	chtype chtype_buffers[maxy][maxx];
+	strclr(buffer, buffer_len);
+	int buffi = 0;
+	for (int r=0; r < maxy; r++) {
+		wmove(window, r, 0);
+		winchstr(window, chtype_buffers[r]);
+		// to trim the line we should count backwards until the first character
+		// you see maxx + 1 because maxx is the final index, not the size
+
+		// convert chtypes to characters
+		int ccount = nc_strtrimlen(chtype_buffers[r], maxx);
+		if (maxx + 1 == ccount)
+			continue; // all characters are empty
+
+		// ccount is the number of characters on the end
+		int strsize = maxx - ccount + 1;
+		for (int c=0; c < strsize; c++) {
+			buffer[buffi++] = chtype_buffers[r][c] & A_CHARTEXT;
+		}
+		buffer[buffi++] = '\n';
+	}
+	// trim final newline
+	buffer[buffi-1] = '\0';
 
 	curs_set(0);
 }
