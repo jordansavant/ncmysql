@@ -126,6 +126,8 @@ void ui_anchor_ul(WINDOW *win, int rows, int cols);
 void ui_anchor_br(WINDOW *win, int rows, int cols);
 void ui_anchor_bl(WINDOW *win, int rows, int cols, int yoff, int xoff);
 void ui_anchor_center(WINDOW *win, int rows, int cols, int yoff, int xoff);
+void ui_bgline(WINDOW *win, int line, int cpair);
+void ui_bgwin(WINDOW *win, int cpair);
 
 // MYSQL FUNCTIONS
 MYSQL_RES* db_queryf(MYSQL *con, int *num_fields, int *num_rows, int *num_affect_rows, int *errcode, char *format, ...);

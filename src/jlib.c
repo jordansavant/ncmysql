@@ -708,6 +708,30 @@ void ui_anchor_center(WINDOW *win, int rows, int cols, int yoff, int xoff)
 	mvwin(win, oy, ox);
 }
 
+// because on mac ncurses does not use wbkgdset function correctly
+void ui_bgline(WINDOW *win, int line, int cpair)
+{
+	wattrset(win, cpair);
+	int my, mx;
+	getmaxyx(win, my, mx);
+	for (int c=0; c<mx; c++) {
+		wmove(win, line, c);
+		waddch(win, ' ');
+	}
+}
+void ui_bgwin(WINDOW *win, int cpair)
+{
+	wattrset(win, cpair);
+	int my, mx;
+	getmaxyx(win, my, mx);
+	for (int r=0; r<my; r++) {
+		for (int c=0; c<mx; c++) {
+			wmove(win, r, c);
+			waddch(win, ' ');
+		}
+	}
+}
+
 // NCURSES UI FUNCTIONS END
 ///////////////////////////////////////
 

@@ -1413,6 +1413,141 @@ void run_mysqldump(char *database) {
 }
 
 #define TBL_NAME_LEN 64
+enum TC_MODE {
+	EDIT_NAME,
+	EDIT_COLS,
+	EDIT_RELS
+};
+enum TC_MODE tc_mode = EDIT_NAME;
+WINDOW* name_win;
+
+enum TC_INDEX_TYPE {
+	INDEX_NONE,
+	INDEX_PRIMARY,
+	INDEX_UNIQUE,
+	INDEX_INDEX
+};
+struct TC_COLUMN {
+	bool isset;
+	char *name;
+	char *type;
+	enum TC_INDEX_TYPE index_type;
+	bool is_nullable;
+	bool is_auto_increment;
+	bool is_unsigned;
+	char *default_value;
+};
+
+void render_name_form(int *y, bool focused, char *tbl_name) {
+	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
+	if (focused)
+		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+
+	ui_bgline(stdscr, *y, cp);
+	ui_bgline(stdscr, *y + 1, cp);
+
+	move(*y,0);
+	attrset(cp);
+	addstr("Table Name:");
+	(*y)++;
+
+	move(*y,0);
+	addstr(tbl_name);
+	(*y)++;
+}
+void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
+	display_str("");
+	display_cmdf("TABLE NAME", 1, "[tab|esc]next");
+
+	// edit name
+	wbkgd(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
+	wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
+	mvwin(name_win, y + 1, 0);
+	refresh();
+	wrefresh(name_win);
+	nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, true);
+	tc_mode = EDIT_COLS;
+}
+
+void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax) {
+	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
+	if (focused)
+		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+
+
+	ui_bgline(stdscr, *y, cp);
+	move(*y,0);
+	attrset(cp);
+	addstr("Columns:");
+	(*y)++;
+
+	// column headers
+	ui_bgline(stdscr, *y, cp);
+	attrset(cp | A_UNDERLINE);
+	move(*y, 0);  addstr("NAME");
+	move(*y, 26); addstr("DATA-TYPE");
+	move(*y, 40); addstr("INDEXING");
+	move(*y, 50); addstr("NULL");
+	move(*y, 60); addstr("UNSIGNED");
+	move(*y, 70); addstr("AUTO-INCR");
+	move(*y, 80); addstr("DEFAULT");
+	attrset(cp);
+	(*y)++;
+
+	// render out columns for table create
+	for (int i=0; i < colmax; i++) {
+		if (!cols[i].isset)
+			continue;
+
+		ui_bgline(stdscr, *y, cp);
+		move(*y,0);
+
+		move(*y, 0);  addstr(cols[i].name);
+		move(*y, 26); addstr(cols[i].type);
+		move(*y, 40); addstr("foobar");
+		move(*y, 50); addstr(cols[i].is_nullable ? "true" : "false");
+		move(*y, 60); addstr(cols[i].is_unsigned ? "true" : "false");
+		move(*y, 70); addstr(cols[i].is_auto_increment ? "true" : "false");
+		move(*y, 80); addstr(cols[i].default_value == NULL ? "null" : cols[i].default_value);
+		(*y)++;
+	}
+
+}
+void edit_column_form(int y) {
+	display_str("");
+	display_cmdf("COLUMNS", 1, "[tab|esc]next");
+	switch (getch()) {
+		case KEY_TAB: tc_mode = EDIT_RELS; break;
+		//case KEY_x: run = false; break;
+	}
+}
+
+void render_foreign_form(int *y, bool focused) {
+	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
+	if (focused)
+		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+
+	ui_bgline(stdscr, *y, cp);
+	ui_bgline(stdscr, *y + 1, cp);
+
+	move(*y,0);
+	attrset(cp);
+	addstr("Foreign Keys:");
+	(*y)++;
+
+	// render out foreign keys
+
+	(*y)++;
+}
+void edit_foreign_form(int y) {
+	display_str("");
+	display_cmdf("FOREIGN KEYS", 1, "[tab|esc]next");
+	switch (getch()) {
+		case KEY_TAB: tc_mode = EDIT_NAME; break;
+		//case KEY_x: run = false; break;
+	}
+}
+
 void run_table_create() {
 	clear();
 	refresh();
@@ -1420,96 +1555,59 @@ void run_table_create() {
 	int sy, sx;
 	getmaxyx(stdscr, sy, sx);
 
-	// table create data
-	enum TC_MODE {
-		EDIT_NAME, EDIT_COLS, EDIT_RELS
-	};
-	enum TC_MODE tc_mode = EDIT_NAME;
-
 	// name form
 	char tbl_name[TBL_NAME_LEN];
 	strclr(tbl_name, TBL_NAME_LEN);
-	WINDOW* name_win;
-	name_win = newwin(1, TBL_NAME_LEN - 1, 0,0);
+	name_win = newwin(1, TBL_NAME_LEN - 1, 0, 0);
+
+	// columns
+	int colcount = 0;
+	struct TC_COLUMN columns[64];
+	// initialize all columns
+	for (int i=0; i < 64; i++) {
+		if (i == 0) {
+			columns[i].isset = true;
+			columns[i].name = "id";
+			columns[i].type = "BIGINT";
+			columns[i].index_type = INDEX_PRIMARY;
+			columns[i].is_nullable = false;
+			columns[i].is_auto_increment = true;
+			columns[i].is_unsigned = true;
+			columns[i].default_value = NULL;
+		} else {
+			columns[i].isset = false;
+			columns[i].name = NULL;
+			columns[i].type = NULL;
+			columns[i].index_type = INDEX_NONE;
+			columns[i].is_nullable = false;
+			columns[i].is_auto_increment = false;
+			columns[i].is_unsigned = false;
+			columns[i].default_value = NULL;
+		}
+	}
 
 	// render form
 	bool run = true;
 	while (run) {
 		// render form
+		int ny=0;
+		render_name_form(&ny, tc_mode == EDIT_NAME, tbl_name);
+
+		int cy = ny + 1;
+		render_column_form(&cy, tc_mode == EDIT_COLS, columns, 64);
+
+		int fy = cy + 1;
+		render_foreign_form(&fy, tc_mode == EDIT_RELS);
+
 		switch (tc_mode) {
 			case EDIT_NAME:
-				move(0,0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
-				addstr("TABLE NAME:");
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr(" ");
-
-				// cols
-				move(2, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("COLUMNS");
-
-				// foreigns
-				move(4, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("FOREIGN KEYS");
-
-				display_str("");
-				display_cmdf("TABLE NAME", 1, "[tab|esc]next");
-
-				// edit name
-				wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLACK));
-				mvwin(name_win, 0, 12);
-				nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, true);
-				tc_mode = EDIT_COLS;
-
+				edit_name_form(0, tbl_name, TBL_NAME_LEN);
 				break;
 			case EDIT_COLS:
-				// name
-				move(0, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("TABLE NAME: ");
-
-				// cols
-				move(2, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
-				addstr("COLUMNS");
-
-				// foreigns
-				move(4, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("FOREIGN KEYS");
-
-				display_str("");
-				display_cmdf("COLUMNS", 3, "{a}dd-col", "{d}elete-col", "[tab]next");
-
-				switch (getch()) {
-					case KEY_TAB: tc_mode = EDIT_RELS; break;
-					case KEY_x: run = false; break;
-				}
+				edit_column_form(ny);
 				break;
 			case EDIT_RELS:
-				move(0,0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("TABLE NAME: ");
-
-				// cols
-				move(2, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
-				addstr("COLUMNS");
-
-				// foreigns
-				move(4, 0);
-				attrset(COLOR_PAIR(COLOR_WHITE_BLACK) | A_UNDERLINE | A_BOLD);
-				addstr("FOREIGN KEYS");
-
-				display_str("");
-				display_cmdf("FOREIGN KEYS", 1, "[tab]next");
-
-				switch (getch()) {
-					case KEY_TAB: tc_mode = EDIT_NAME; break;
-					case KEY_x: run = false; break;
-				}
+				edit_foreign_form(cy);
 				break;
 		}
 	}
