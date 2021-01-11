@@ -80,6 +80,13 @@ int clampi(int v, int min, int max) {
 		return min;
 	return v;
 }
+int wrapi(int v, int min, int max) {
+	if (v > max)
+		return min;
+	if (v < min)
+		return max;
+	return v;
+}
 
 // MATH FUNCTIONS END
 //////////////////////////////////////

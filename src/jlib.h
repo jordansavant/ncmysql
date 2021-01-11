@@ -91,6 +91,7 @@ int syscode(const char *cmd);
 int maxi(int a, int b);
 int mini(int a, int b);
 int clampi(int v, int min, int max);
+int wrapi(int v, int min, int max);
 
 // STRING FUNCTIONS
 int strchrplc(char *str, char orig, char rep);

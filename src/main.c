@@ -1560,7 +1560,7 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 		if (cols[i].isset)
 			num_rows++;
 
-	char g = getch();
+	int g = getch();
 	switch (g) {
 		case KEY_TAB:
 			// tab through fields an rows, if we run out go to next form
@@ -1573,6 +1573,30 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 					tc_mode = EDIT_RELS;
 				}
 			}
+			break;
+		case KEY_RIGHT:
+			(*cur_field) = wrapi(*cur_field + 1, 0, num_fields - 1);
+			break;
+		case KEY_LEFT:
+			(*cur_field) = wrapi(*cur_field - 1, 0, num_fields - 1);
+			break;
+		case KEY_UP:
+			// if at zero then go to previous form
+			if (*cur_row == 0) {
+				tc_mode = EDIT_NAME;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)--;
+			break;
+		case KEY_DOWN:
+			// if at zero then go to previous form
+			if (*cur_row == num_rows - 1) {
+				tc_mode = EDIT_RELS;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)++;
 			break;
 		case KEY_RETURN:
 			// depending on the field we can change it
