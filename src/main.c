@@ -1415,8 +1415,9 @@ void run_mysqldump(char *database) {
 #define TBL_NAME_LEN 64
 enum TC_MODE {
 	EDIT_NAME,
-	EDIT_COLS,
-	EDIT_RELS
+	EDIT_COLUMNS,
+	EDIT_FKS,
+	EDIT_EXIT,
 };
 enum TC_MODE tc_mode = EDIT_NAME;
 WINDOW* name_win;
@@ -1485,9 +1486,9 @@ void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
 	int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, 0};
 	int exit_key = nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, exit_keys);
 	if (exit_key == KEY_UP)
-		tc_mode = EDIT_RELS;
+		tc_mode = EDIT_FKS;
 	else
-		tc_mode = EDIT_COLS;
+		tc_mode = EDIT_COLUMNS;
 }
 
 void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
@@ -1558,7 +1559,7 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 }
 void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
 	display_str("create table");
-	display_cmdf("COLUMNS", 2, "{a}dd-column", "{d}elete-column", "[tab]next");
+	display_cmdf("COLUMNS", 2, "{a}dd-column", "{d}elete-column", "[ent]edit", "[tab]next");
 
 	int num_fields = 7;
 	int num_rows = 0;
@@ -1567,19 +1568,19 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 			num_rows++;
 
 	int g = getch();
-GPROC:
+INPUT_LISTEN:
 	switch (g) {
 		case KEY_TAB:
+			tc_mode = EDIT_FKS;
 			// tab through fields an rows, if we run out go to next form
-			(*cur_field)++;
-			if ((*cur_field) >= num_fields) {
-				(*cur_field) = 0;
-				(*cur_row)++;
-				if ((*cur_row) >= num_rows) {
-					(*cur_row) = 0;
-					tc_mode = EDIT_RELS;
-				}
-			}
+			//(*cur_field)++;
+			//if ((*cur_field) >= num_fields) {
+			//	(*cur_field) = 0;
+			//	(*cur_row)++;
+			//	if ((*cur_row) >= num_rows) {
+			//		(*cur_row) = 0;
+			//	}
+			//}
 			break;
 		case KEY_RIGHT:
 			(*cur_field) = wrapi(*cur_field + 1, 0, num_fields - 1);
@@ -1588,22 +1589,24 @@ GPROC:
 			(*cur_field) = wrapi(*cur_field - 1, 0, num_fields - 1);
 			break;
 		case KEY_UP:
-			// if at zero then go to previous form
-			if (*cur_row == 0) {
-				tc_mode = EDIT_NAME;
-				(*cur_row) = 0;
-				(*cur_field) = 0;
-			} else
-				(*cur_row)--;
+			(*cur_row) = wrapi(*cur_row - 1, 0, num_rows - 1);
+			//// if at zero then go to previous form
+			//if (*cur_row == 0) {
+			//	tc_mode = EDIT_NAME;
+			//	(*cur_row) = 0;
+			//	(*cur_field) = 0;
+			//} else
+			//	(*cur_row)--;
 			break;
 		case KEY_DOWN:
-			// if at zero then go to previous form
-			if (*cur_row == num_rows - 1) {
-				tc_mode = EDIT_RELS;
-				(*cur_row) = 0;
-				(*cur_field) = 0;
-			} else
-				(*cur_row)++;
+			(*cur_row) = wrapi(*cur_row + 1, 0, num_rows - 1);
+			//// if at zero then go to previous form
+			//if (*cur_row == num_rows - 1) {
+			//	tc_mode = EDIT_FKS;
+			//	(*cur_row) = 0;
+			//	(*cur_field) = 0;
+			//} else
+			//	(*cur_row)++;
 			break;
 		case KEY_RETURN: {
 			// depending on the field we can change it
@@ -1618,7 +1621,7 @@ GPROC:
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto GPROC;
+				g = exit_key; goto INPUT_LISTEN;
 			}
 			if (*cur_field == 1) {
 				WINDOW *col_edit_win;
@@ -1628,7 +1631,7 @@ GPROC:
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto GPROC;
+				g = exit_key; goto INPUT_LISTEN;
 			}
 			if (*cur_field == 6) {
 				WINDOW *col_edit_win;
@@ -1638,7 +1641,7 @@ GPROC:
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto GPROC;
+				g = exit_key; goto INPUT_LISTEN;
 			}
 			// index enum
 			if (*cur_field == 2) {
@@ -1702,12 +1705,13 @@ void edit_foreign_form(int y) {
 	display_str("create table");
 	display_cmdf("FOREIGN KEYS", 1, "[tab|esc]next");
 	switch (getch()) {
-		case KEY_TAB: tc_mode = EDIT_NAME; break;
+		case KEY_TAB: tc_mode = EDIT_EXIT; break;
 		//case KEY_x: run = false; break;
 	}
 }
 
 void run_table_create() {
+	tc_mode = EDIT_NAME;
 	clear();
 	refresh();
 
@@ -1755,20 +1759,108 @@ void run_table_create() {
 		render_name_form(&ny, tc_mode == EDIT_NAME, tbl_name);
 
 		int cy = ny + 1;
-		render_column_form(&cy, tc_mode == EDIT_COLS, columns, TC_MAX_COLS, &cur_field, &cur_row);
+		render_column_form(&cy, tc_mode == EDIT_COLUMNS, columns, TC_MAX_COLS, &cur_field, &cur_row);
 
 		int fy = cy + 1;
-		render_foreign_form(&fy, tc_mode == EDIT_RELS);
+		render_foreign_form(&fy, tc_mode == EDIT_FKS);
 
 		switch (tc_mode) {
 			case EDIT_NAME:
 				edit_name_form(0, tbl_name, TBL_NAME_LEN);
 				break;
-			case EDIT_COLS:
+			case EDIT_COLUMNS:
 				edit_column_form(ny, columns, TC_MAX_COLS, &cur_field, &cur_row);
 				break;
-			case EDIT_RELS:
+			case EDIT_FKS:
 				edit_foreign_form(cy);
+				break;
+			case EDIT_EXIT:
+				// confirm to create syntax or listen for input to change the next form
+				display_strf_color(COLOR_WHITE_RED, "GENERATE CREATE SYNTAX [Y/n]?");
+				display_cmdf("", 0);
+				switch (getch()) {
+					case KEY_y: {
+						// capture table create data and create the syntax for the SQL CREATE call
+						// collect the columns to be created
+						char colbuffer[1024];
+						strclr(colbuffer, 1024);
+						bool first=true;
+						for (int i=0; i < TC_MAX_COLS; i++) {
+							if (columns[i].isset) {
+								// id INT NOT NULL AUTO_INCREMENT
+								// test VARCHAR(255) DEFAULT NULL
+								// code VARCHAR(32)
+								if (first) {
+									sprintf(colbuffer, "    %s %s %s %s %s,\n",
+										columns[i].name,
+										columns[i].type,
+										columns[i].is_unsigned ? "UNSIGNED" : "",
+										columns[i].is_nullable ? "" : "NOT NULL",
+										columns[i].is_auto_increment ? "AUTO_INCREMENT" : ""
+									);
+									first = false;
+								} else {
+									sprintf(colbuffer, "%s    %s %s %s %s %s,\n",
+										colbuffer,
+										columns[i].name,
+										columns[i].type,
+										columns[i].is_unsigned ? "UNSIGNED" : "",
+										columns[i].is_nullable ? "" : "NOT NULL",
+										columns[i].is_auto_increment ? "AUTO_INCREMENT" : ""
+									);
+								}
+							}
+						}
+
+						char indbuffer[1024];
+						strclr(indbuffer, 1024);
+						for (int i=0; i < TC_MAX_COLS; i++) {
+							if (columns[i].isset) {
+								switch (columns[i].index_type) {
+									case INDEX_PRIMARY:
+										sprintf(indbuffer, "%s    PRIMARY KEY(%s),\n", indbuffer, columns[i].name);
+										break;
+									case INDEX_UNIQUE:
+										sprintf(indbuffer, "%s    UNIQUE(%s),\n", indbuffer, columns[i].name);
+										break;
+									case INDEX_INDEX:
+										sprintf(indbuffer, "%s    INDEX(%s),\n", indbuffer, columns[i].name);
+										break;
+								}
+							}
+						}
+						// trim trailing commas
+						int clen = strlen(colbuffer);
+						int ilen = strlen(indbuffer);
+						// todo foreigns
+						if (ilen > 0) {
+							if (indbuffer[ilen - 2] == ',')
+								indbuffer[ilen - 2] = '\n';
+						} else if (clen > 0) {
+							if (colbuffer[clen - 2] == ',')
+								colbuffer[clen - 2] = '\n';
+						}
+
+						//
+						set_queryf(
+							"CREATE TABLE %s (\n"
+							"%s\n"
+							"%s\n"
+							")\n",
+							tbl_name,
+							colbuffer,
+							indbuffer
+						);
+						run = false;
+						break;
+					}
+					case KEY_UP:
+						tc_mode = EDIT_FKS;
+						break;
+					default:
+						tc_mode = EDIT_NAME;
+						break;
+				}
 				break;
 		}
 	}
