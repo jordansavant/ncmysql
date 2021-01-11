@@ -1790,23 +1790,28 @@ void run_table_create() {
 								// id INT NOT NULL AUTO_INCREMENT
 								// test VARCHAR(255) DEFAULT NULL
 								// code VARCHAR(32)
+								char defbuf[64]; strclr(defbuf, 64);
+								if (columns[i].default_value[0] != '\0')
+									sprintf(defbuf, "DEFAULT '%s'", columns[i].default_value);
 								if (first) {
-									sprintf(colbuffer, "    %s %s %s %s %s,\n",
+									sprintf(colbuffer, "    %s %s %s %s %s %s,\n",
 										columns[i].name,
 										columns[i].type,
 										columns[i].is_unsigned ? "UNSIGNED" : "",
 										columns[i].is_nullable ? "" : "NOT NULL",
-										columns[i].is_auto_increment ? "AUTO_INCREMENT" : ""
+										columns[i].is_auto_increment ? "AUTO_INCREMENT" : "",
+										defbuf
 									);
 									first = false;
 								} else {
-									sprintf(colbuffer, "%s    %s %s %s %s %s,\n",
+									sprintf(colbuffer, "%s    %s %s %s %s %s %s,\n",
 										colbuffer,
 										columns[i].name,
 										columns[i].type,
 										columns[i].is_unsigned ? "UNSIGNED" : "",
 										columns[i].is_nullable ? "" : "NOT NULL",
-										columns[i].is_auto_increment ? "AUTO_INCREMENT" : ""
+										columns[i].is_auto_increment ? "AUTO_INCREMENT" : "",
+										defbuf
 									);
 								}
 							}
