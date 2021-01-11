@@ -1238,7 +1238,7 @@ void run_edit_focused_cell() {
 
 				xlog(buffer);
 				wmove(cell_pad, 0, 0);
-				nc_text_editor_pad(cell_pad, edited, imaxf, false, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+				nc_text_editor_pad(cell_pad, edited, imaxf, NULL, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				xlogf("[%s]\n", edited);
 
 				mode = CONFIRM;
@@ -1478,10 +1478,16 @@ void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
 	wbkgd(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
 	wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
 	mvwin(name_win, y + 1, 0);
+
 	refresh();
 	wrefresh(name_win);
-	nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, true);
-	tc_mode = EDIT_COLS;
+
+	int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, 0};
+	int exit_key = nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, exit_keys);
+	if (exit_key == KEY_UP)
+		tc_mode = EDIT_RELS;
+	else
+		tc_mode = EDIT_COLS;
 }
 
 void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
@@ -1561,6 +1567,7 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 			num_rows++;
 
 	int g = getch();
+GPROC:
 	switch (g) {
 		case KEY_TAB:
 			// tab through fields an rows, if we run out go to next form
@@ -1598,33 +1605,40 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 			} else
 				(*cur_row)++;
 			break;
-		case KEY_RETURN:
+		case KEY_RETURN: {
 			// depending on the field we can change it
 			// for string fields we need to enter the edit mode for that field
+			int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, 0};
 			if (*cur_field == 0) {
 				//cols[*cur_row].name; editor for this
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 0);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, true);
+				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
+
+				g = exit_key; goto GPROC;
 			}
 			if (*cur_field == 1) {
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 14, y + 3 + (*cur_row), 26);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, true);
+				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
+
+				g = exit_key; goto GPROC;
 			}
 			if (*cur_field == 6) {
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 32, y + 3 + (*cur_row), 81);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, true);
+				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
+
+				g = exit_key; goto GPROC;
 			}
 			// index enum
 			if (*cur_field == 2) {
@@ -1640,6 +1654,7 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 			if (*cur_field == 5)
 				cols[*cur_row].is_auto_increment = !cols[*cur_row].is_auto_increment;
 			break;
+		}
 		case 'd':
 			// delete the current row
 			if (num_rows > 1) {
@@ -2210,7 +2225,7 @@ void run_db_interact(MYSQL *con) {
 
 						char buffer[QUERY_MAX];
 						strcpy(buffer, the_query);
-						nc_text_editor_win(query_window, buffer, QUERY_MAX, false);
+						nc_text_editor_win(query_window, buffer, QUERY_MAX, NULL);
 
 						// capture query
 						set_query(buffer);

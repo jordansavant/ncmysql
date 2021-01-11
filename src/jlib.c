@@ -282,15 +282,15 @@ char* scantok(char *line, int field_pos, char delim) {
 ///////////////////////////////////////
 // NCURSES FUNCTIONS START
 
-void nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, bool tab_exits, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
-	nc_text_editor(pad, buffer, buffer_len, tab_exits, true, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
+int nc_text_editor_pad(WINDOW *pad, char *buffer, int buffer_len, int *exit_keys, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+	return nc_text_editor(pad, buffer, buffer_len, exit_keys, true, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 }
 
-void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len, bool tab_exits) {
-	nc_text_editor(win, buffer, buffer_len, tab_exits, false, 0, 0, 0, 0, 0, 0);
+int nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len, int *exit_keys) {
+	return nc_text_editor(win, buffer, buffer_len, exit_keys, false, 0, 0, 0, 0, 0, 0);
 }
 
-void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+int nc_text_editor(WINDOW *window, char *buffer, int buffer_len, int *exit_keys, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
 
 	// if a buffer has contents then place it into the editor
 	ui_clear_win(window);
@@ -317,10 +317,27 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits
 	move(cury, curx);
 	wmove(window, cury - begy, curx - begx);
 
+	int key = 0;
 	bool editing = true;
 	while (editing) {
 		// Lock down editing to this position
-		int key = getch();
+		key = getch();
+
+		// check if key is an exit char
+		if (exit_keys != NULL) {
+			// loop until a terminating exit char is found
+			int i=0;
+			while (exit_keys[i] != 0) {
+				if (exit_keys[i] == key) {
+					editing = false;
+					break;
+				}
+				i++;
+			}
+		}
+		if (!editing)
+			break;
+
 		switch (key) {
 			case KEY_ctrl_x:
 			case KEY_ESC: {
@@ -352,10 +369,6 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits
 			default:
 				// ELSE WE ARE LISTENING TO INPUT AND EDITING THE WINDOW
 				if ((key > 31 && key < 127) || key == '\t') { // ascii input
-					if (key == '\t' && tab_exits) {
-						editing = false;
-						break;
-					}
 					int winy, winx;
 					getyx(window, winy, winx); // winx is position in line
 					int sizeleft = maxx - winx - 1;
@@ -514,6 +527,8 @@ void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits
 	buffer[buffi-1] = '\0';
 
 	curs_set(0);
+
+	return key; // return key used to exit
 }
 
 int nc_strtrimlen(chtype *buff, int size) {
