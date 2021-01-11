@@ -1429,6 +1429,7 @@ enum TC_INDEX_TYPE {
 };
 #define TC_INDEX_TYPE_COUNT 4
 #define TC_COLUMN_STRLEN 64
+#define TC_MAX_COLS 32
 struct TC_COLUMN {
 	bool isset;
 	char name[TC_COLUMN_STRLEN];
@@ -1460,8 +1461,8 @@ void render_name_form(int *y, bool focused, char *tbl_name) {
 	ui_bgline(stdscr, *y + 1, cp);
 
 	move(*y,0);
-	attrset(cp);
-	addstr("Table Name:");
+	attrset(cp | A_UNDERLINE);
+	addstr("Table Name");
 	(*y)++;
 
 	move(*y,0);
@@ -1470,7 +1471,7 @@ void render_name_form(int *y, bool focused, char *tbl_name) {
 	(*y)++;
 }
 void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
-	display_str("");
+	display_str("create table");
 	display_cmdf("TABLE NAME", 1, "[tab|esc]next");
 
 	// edit name
@@ -1490,7 +1491,7 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 
 	ui_bgline(stdscr, *y, cp);
 	move(*y,0);
-	attrset(cp);
+	attrset(cp | A_UNDERLINE);
 	addstr("Columns");
 	(*y)++;
 
@@ -1500,7 +1501,7 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 	move(*y, 0);  addstr("NAME");
 	move(*y, 26); addstr("DATA-TYPE");
 	move(*y, 40); addstr("INDEXING");
-	move(*y, 50); addstr("NULL");
+	move(*y, 50); addstr("NULLABLE");
 	move(*y, 60); addstr("UNSIGNED");
 	move(*y, 70); addstr("AUTO-INCR");
 	move(*y, 81); addstr("DEFAULT");
@@ -1550,7 +1551,7 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 
 }
 void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
-	display_str("");
+	display_str("create table");
 	display_cmdf("COLUMNS", 2, "{a}dd-column", "{d}elete-column", "[tab]next");
 
 	int num_fields = 7;
@@ -1582,23 +1583,23 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 0);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, false);
+				nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, true);
 				delwin(col_edit_win);
 			}
 			if (*cur_field == 1) {
 				WINDOW *col_edit_win;
-				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 26);
+				col_edit_win = newwin(1, 14, y + 3 + (*cur_row), 26);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, false);
+				nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, true);
 				delwin(col_edit_win);
 			}
 			if (*cur_field == 6) {
 				WINDOW *col_edit_win;
-				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 81);
+				col_edit_win = newwin(1, 32, y + 3 + (*cur_row), 81);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
 				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, false);
+				nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, true);
 				delwin(col_edit_win);
 			}
 			// index enum
@@ -1630,8 +1631,12 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 			break;
 		case 'a':
 			// add a new row
-			cols[num_rows].isset = true;
-			num_rows++;
+			if (num_rows < TC_MAX_COLS) {
+				cols[num_rows].isset = true;
+				(*cur_row) = num_rows;
+				(*cur_field) = 0;
+				num_rows++;
+			}
 
 			break;
 	}
@@ -1646,8 +1651,8 @@ void render_foreign_form(int *y, bool focused) {
 	ui_bgline(stdscr, *y + 1, cp);
 
 	move(*y,0);
-	attrset(cp);
-	addstr("Foreign Keys:");
+	attrset(cp | A_UNDERLINE);
+	addstr("Foreign Keys");
 	(*y)++;
 
 	// render out foreign keys
@@ -1655,7 +1660,7 @@ void render_foreign_form(int *y, bool focused) {
 	(*y)++;
 }
 void edit_foreign_form(int y) {
-	display_str("");
+	display_str("create table");
 	display_cmdf("FOREIGN KEYS", 1, "[tab|esc]next");
 	switch (getch()) {
 		case KEY_TAB: tc_mode = EDIT_NAME; break;
@@ -1677,10 +1682,10 @@ void run_table_create() {
 
 	// columns
 	int colcount = 0;
-	struct TC_COLUMN columns[64];
+	struct TC_COLUMN columns[TC_MAX_COLS];
 	int cur_field = 0, cur_row = 0;
 	// initialize all columns
-	for (int i=0; i < 64; i++) {
+	for (int i=0; i < TC_MAX_COLS; i++) {
 		if (i == 0) {
 			columns[i].isset = true;
 			strcpy(columns[i].name, "id");
@@ -1711,7 +1716,7 @@ void run_table_create() {
 		render_name_form(&ny, tc_mode == EDIT_NAME, tbl_name);
 
 		int cy = ny + 1;
-		render_column_form(&cy, tc_mode == EDIT_COLS, columns, 64, &cur_field, &cur_row);
+		render_column_form(&cy, tc_mode == EDIT_COLS, columns, TC_MAX_COLS, &cur_field, &cur_row);
 
 		int fy = cy + 1;
 		render_foreign_form(&fy, tc_mode == EDIT_RELS);
@@ -1721,7 +1726,7 @@ void run_table_create() {
 				edit_name_form(0, tbl_name, TBL_NAME_LEN);
 				break;
 			case EDIT_COLS:
-				edit_column_form(ny, columns, 64, &cur_field, &cur_row);
+				edit_column_form(ny, columns, TC_MAX_COLS, &cur_field, &cur_row);
 				break;
 			case EDIT_RELS:
 				edit_foreign_form(cy);
