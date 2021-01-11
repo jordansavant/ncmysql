@@ -1217,6 +1217,7 @@ void run_edit_focused_cell() {
 	waddstr(cell_pad, buffer);
 
 	char edited[imaxf];
+	strcpy(edited, buffer);
 	//int pad_y=0, pad_x=0, scr_y=1, scr_x=2, scr_y_end=sy-2, scr_x_end=sx-3;
 	int pad_y=0, pad_x=0, scr_y=0, scr_x=0, scr_y_end=sy-1, scr_x_end=sx-1;
 	enum M {
@@ -1236,7 +1237,6 @@ void run_edit_focused_cell() {
 				prefresh(cell_pad, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 
 				xlog(buffer);
-				strclr(edited, imaxf);
 				wmove(cell_pad, 0, 0);
 				nc_text_editor_pad(cell_pad, edited, imaxf, false, pad_y, pad_x, scr_y, scr_x, scr_y_end, scr_x_end);
 				xlogf("[%s]\n", edited);
@@ -1427,15 +1427,17 @@ enum TC_INDEX_TYPE {
 	INDEX_UNIQUE,
 	INDEX_INDEX
 };
+#define TC_INDEX_TYPE_COUNT 4
+#define TC_COLUMN_STRLEN 64
 struct TC_COLUMN {
 	bool isset;
-	char name[64];
-	char type[64];
+	char name[TC_COLUMN_STRLEN];
+	char type[TC_COLUMN_STRLEN];
 	enum TC_INDEX_TYPE index_type;
 	bool is_nullable;
 	bool is_auto_increment;
 	bool is_unsigned;
-	char default_value[64];
+	char default_value[TC_COLUMN_STRLEN];
 };
 
 void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
@@ -1571,6 +1573,48 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 				}
 			}
 			break;
+		case KEY_RETURN:
+			// depending on the field we can change it
+			// for string fields we need to enter the edit mode for that field
+			if (*cur_field == 0) {
+				//cols[*cur_row].name; editor for this
+				WINDOW *col_edit_win;
+				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 0);
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, false);
+				delwin(col_edit_win);
+			}
+			if (*cur_field == 1) {
+				WINDOW *col_edit_win;
+				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 26);
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, false);
+				delwin(col_edit_win);
+			}
+			if (*cur_field == 6) {
+				WINDOW *col_edit_win;
+				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 81);
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, false);
+				delwin(col_edit_win);
+			}
+			// index enum
+			if (*cur_field == 2) {
+				cols[*cur_row].index_type++;
+				if (cols[*cur_row].index_type >= TC_INDEX_TYPE_COUNT)
+					cols[*cur_row].index_type = 0;
+			}
+			// flip bools
+			if (*cur_field == 3)
+				cols[*cur_row].is_nullable = !cols[*cur_row].is_nullable;
+			if (*cur_field == 4)
+				cols[*cur_row].is_unsigned = !cols[*cur_row].is_unsigned;
+			if (*cur_field == 5)
+				cols[*cur_row].is_auto_increment = !cols[*cur_row].is_auto_increment;
+			break;
 		case 'd':
 			// delete the current row
 			if (num_rows > 1) {
@@ -1587,8 +1631,6 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 		case 'a':
 			// add a new row
 			cols[num_rows].isset = true;
-			strcpy(cols[num_rows].name, "foo");
-			strcpy(cols[num_rows].type, "VARCHAR(32)");
 			num_rows++;
 
 			break;
@@ -1647,16 +1689,16 @@ void run_table_create() {
 			columns[i].is_nullable = false;
 			columns[i].is_auto_increment = true;
 			columns[i].is_unsigned = true;
-			strclr(columns[i].default_value, 64);
+			strclr(columns[i].default_value, TC_COLUMN_STRLEN);
 		} else {
 			columns[i].isset = false;
-			strclr(columns[i].name, 64);
-			strclr(columns[i].type, 64);
+			strcpy(columns[i].name, "foo");
+			strcpy(columns[i].type, "VARCHAR(32)");
 			columns[i].index_type = INDEX_NONE;
 			columns[i].is_nullable = false;
 			columns[i].is_auto_increment = false;
 			columns[i].is_unsigned = false;
-			strclr(columns[i].default_value, 64);
+			strclr(columns[i].default_value, TC_COLUMN_STRLEN);
 		}
 	}
 
@@ -2138,6 +2180,7 @@ void run_db_interact(MYSQL *con) {
 						xlog("   QUERY_STATE_EDIT");
 
 						char buffer[QUERY_MAX];
+						strcpy(buffer, the_query);
 						nc_text_editor_win(query_window, buffer, QUERY_MAX, false);
 
 						// capture query

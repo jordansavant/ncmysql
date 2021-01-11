@@ -284,6 +284,13 @@ void nc_text_editor_win(WINDOW *win, char *buffer, int buffer_len, bool tab_exit
 }
 
 void nc_text_editor(WINDOW *window, char *buffer, int buffer_len, bool tab_exits, bool is_pad, int pad_y, int pad_x, int scr_y, int scr_x, int scr_y_end, int scr_x_end) {
+
+	// if a buffer has contents then place it into the editor
+	ui_clear_win(window);
+	wmove(window, 0,0);
+	waddstr(window, buffer);
+	wrefresh(window);
+
 	curs_set(1);
 
 	// beg and end are screen coords of editor window
