@@ -1429,14 +1429,25 @@ enum TC_INDEX_TYPE {
 };
 struct TC_COLUMN {
 	bool isset;
-	char *name;
-	char *type;
+	char name[64];
+	char type[64];
 	enum TC_INDEX_TYPE index_type;
 	bool is_nullable;
 	bool is_auto_increment;
 	bool is_unsigned;
-	char *default_value;
+	char default_value[64];
 };
+
+void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
+	col_to->isset = col_from->isset;
+	strcpy(col_to->name, col_from->name);
+	strcpy(col_to->type, col_from->type);
+	col_to->index_type = col_from->index_type;
+	col_to->is_nullable = col_from->is_nullable;
+	col_to->is_auto_increment = col_from->is_auto_increment;
+	col_to->is_unsigned = col_from->is_unsigned;
+	strcpy(col_to->default_value, col_from->default_value);
+}
 
 void render_name_form(int *y, bool focused, char *tbl_name) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
@@ -1452,6 +1463,7 @@ void render_name_form(int *y, bool focused, char *tbl_name) {
 	(*y)++;
 
 	move(*y,0);
+	attrset(COLOR_PAIR(COLOR_CYAN_BLUE));
 	addstr(tbl_name);
 	(*y)++;
 }
@@ -1469,28 +1481,27 @@ void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
 	tc_mode = EDIT_COLS;
 }
 
-void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax) {
+void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
 		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
 
-
 	ui_bgline(stdscr, *y, cp);
 	move(*y,0);
 	attrset(cp);
-	addstr("Columns:");
+	addstr("Columns");
 	(*y)++;
 
 	// column headers
 	ui_bgline(stdscr, *y, cp);
-	attrset(cp | A_UNDERLINE);
+	attrset(cp);
 	move(*y, 0);  addstr("NAME");
 	move(*y, 26); addstr("DATA-TYPE");
 	move(*y, 40); addstr("INDEXING");
 	move(*y, 50); addstr("NULL");
 	move(*y, 60); addstr("UNSIGNED");
 	move(*y, 70); addstr("AUTO-INCR");
-	move(*y, 80); addstr("DEFAULT");
+	move(*y, 81); addstr("DEFAULT");
 	attrset(cp);
 	(*y)++;
 
@@ -1502,23 +1513,85 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 		ui_bgline(stdscr, *y, cp);
 		move(*y,0);
 
+		attrset(focused && *cur_row == i && *cur_field == 0 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
 		move(*y, 0);  addstr(cols[i].name);
+
+		attrset(focused && *cur_row == i && *cur_field == 1 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
 		move(*y, 26); addstr(cols[i].type);
-		move(*y, 40); addstr("foobar");
-		move(*y, 50); addstr(cols[i].is_nullable ? "true" : "false");
-		move(*y, 60); addstr(cols[i].is_unsigned ? "true" : "false");
-		move(*y, 70); addstr(cols[i].is_auto_increment ? "true" : "false");
-		move(*y, 80); addstr(cols[i].default_value == NULL ? "null" : cols[i].default_value);
+
+		attrset(focused && *cur_row == i && *cur_field == 2 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		if (cols[i].index_type == INDEX_NONE) {
+			move(*y, 40); addstr("NONE");
+		} else if (cols[i].index_type == INDEX_PRIMARY) {
+			move(*y, 40); addstr("PRIMARY");
+		} else if (cols[i].index_type == INDEX_UNIQUE) {
+			move(*y, 40); addstr("UNIQUE");
+		} else if (cols[i].index_type == INDEX_INDEX) {
+			move(*y, 40); addstr("INDEX");
+		}
+
+		attrset(focused && *cur_row == i && *cur_field == 3 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		move(*y, 50); addstr(cols[i].is_nullable ? "TRUE" : "FALSE");
+
+		attrset(focused && *cur_row == i && *cur_field == 4 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		move(*y, 60); addstr(cols[i].is_unsigned ? "TRUE" : "FALSE");
+
+		attrset(focused && *cur_row == i && *cur_field == 5 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		move(*y, 70); addstr(cols[i].is_auto_increment ? "TRUE" : "FALSE");
+
+		attrset(focused && *cur_row == i && *cur_field == 6 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		move(*y, 81); addstr(cols[i].default_value[0] == '\0' ? "NULL" : cols[i].default_value);
 		(*y)++;
 	}
 
+	ui_bgline(stdscr, *y, COLOR_PAIR(COLOR_WHITE_BLACK));
+
 }
-void edit_column_form(int y) {
+void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
 	display_str("");
-	display_cmdf("COLUMNS", 1, "[tab|esc]next");
-	switch (getch()) {
-		case KEY_TAB: tc_mode = EDIT_RELS; break;
-		//case KEY_x: run = false; break;
+	display_cmdf("COLUMNS", 2, "{a}dd-column", "{d}elete-column", "[tab]next");
+
+	int num_fields = 7;
+	int num_rows = 0;
+	for (int i=0; i<colmax; i++)
+		if (cols[i].isset)
+			num_rows++;
+
+	char g = getch();
+	switch (g) {
+		case KEY_TAB:
+			// tab through fields an rows, if we run out go to next form
+			(*cur_field)++;
+			if ((*cur_field) >= num_fields) {
+				(*cur_field) = 0;
+				(*cur_row)++;
+				if ((*cur_row) >= num_rows) {
+					(*cur_row) = 0;
+					tc_mode = EDIT_RELS;
+				}
+			}
+			break;
+		case 'd':
+			// delete the current row
+			if (num_rows > 1) {
+				cols[*cur_row].isset = false;
+				// copy all affter before
+				for (int i=(*cur_row); i < colmax - 1; i++) {
+					copy_cols(&cols[i + 1], &cols[i]);
+				}
+				if ((*cur_row) >= num_rows - 1)
+					(*cur_row)--;
+
+			}
+			break;
+		case 'a':
+			// add a new row
+			cols[num_rows].isset = true;
+			strcpy(cols[num_rows].name, "foo");
+			strcpy(cols[num_rows].type, "VARCHAR(32)");
+			num_rows++;
+
+			break;
 	}
 }
 
@@ -1563,38 +1636,40 @@ void run_table_create() {
 	// columns
 	int colcount = 0;
 	struct TC_COLUMN columns[64];
+	int cur_field = 0, cur_row = 0;
 	// initialize all columns
 	for (int i=0; i < 64; i++) {
 		if (i == 0) {
 			columns[i].isset = true;
-			columns[i].name = "id";
-			columns[i].type = "BIGINT";
+			strcpy(columns[i].name, "id");
+			strcpy(columns[i].type, "BIGINT");
 			columns[i].index_type = INDEX_PRIMARY;
 			columns[i].is_nullable = false;
 			columns[i].is_auto_increment = true;
 			columns[i].is_unsigned = true;
-			columns[i].default_value = NULL;
+			strclr(columns[i].default_value, 64);
 		} else {
 			columns[i].isset = false;
-			columns[i].name = NULL;
-			columns[i].type = NULL;
+			strclr(columns[i].name, 64);
+			strclr(columns[i].type, 64);
 			columns[i].index_type = INDEX_NONE;
 			columns[i].is_nullable = false;
 			columns[i].is_auto_increment = false;
 			columns[i].is_unsigned = false;
-			columns[i].default_value = NULL;
+			strclr(columns[i].default_value, 64);
 		}
 	}
 
 	// render form
 	bool run = true;
 	while (run) {
+
 		// render form
 		int ny=0;
 		render_name_form(&ny, tc_mode == EDIT_NAME, tbl_name);
 
 		int cy = ny + 1;
-		render_column_form(&cy, tc_mode == EDIT_COLS, columns, 64);
+		render_column_form(&cy, tc_mode == EDIT_COLS, columns, 64, &cur_field, &cur_row);
 
 		int fy = cy + 1;
 		render_foreign_form(&fy, tc_mode == EDIT_RELS);
@@ -1604,7 +1679,7 @@ void run_table_create() {
 				edit_name_form(0, tbl_name, TBL_NAME_LEN);
 				break;
 			case EDIT_COLS:
-				edit_column_form(ny);
+				edit_column_form(ny, columns, 64, &cur_field, &cur_row);
 				break;
 			case EDIT_RELS:
 				edit_foreign_form(cy);
