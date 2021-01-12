@@ -1345,8 +1345,7 @@ void run_view_focused_cell() {
 
 
 //////////////////////////////////////
-// MAIN STATE MACHINE FOR INTERACTING
-// WITH SELECTED DATABASE
+// MYSQL DUMP SUB OPERATION
 
 void run_mysqldump(char *database) {
 
@@ -1412,14 +1411,19 @@ void run_mysqldump(char *database) {
 	}
 }
 
+
+//////////////////////////////////////
+// TABLE CREATION SUB OPERATION
+
 #define TBL_NAME_LEN 64
 enum TC_MODE {
-	EDIT_NAME,
-	EDIT_COLUMNS,
-	EDIT_FKS,
-	EDIT_EXIT,
+	TC_EDIT_NAME,
+	TC_EDIT_COLUMNS,
+	TC_EDIT_FKS,
+	TC_EDIT_ABORT,
+	TC_EDIT_EXIT,
 };
-enum TC_MODE tc_mode = EDIT_NAME;
+enum TC_MODE tc_mode = TC_EDIT_NAME;
 WINDOW* name_win;
 
 enum TC_INDEX_TYPE {
@@ -1456,55 +1460,53 @@ void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
 void render_name_form(int *y, bool focused, char *tbl_name) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
-		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+		cp = COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD;
 
 	ui_bgline(stdscr, *y, cp);
 	ui_bgline(stdscr, *y + 1, cp);
 
 	move(*y,0);
-	attrset(cp | A_UNDERLINE);
-	addstr("Table Name");
-	(*y)++;
-
-	move(*y,0);
-	attrset(COLOR_PAIR(COLOR_CYAN_BLUE));
+	attrset(cp);
+	addstr("TABLE NAME: ");
+	attrset(COLOR_PAIR(COLOR_CYAN_BLACK));
 	addstr(tbl_name);
 	(*y)++;
 }
+
 void edit_name_form(int y, char *tbl_name, int tbl_name_len) {
 	display_str("create table");
 	display_cmdf("TABLE NAME", 1, "[tab|esc]next");
 
 	// edit name
-	wbkgd(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
-	wattrset(name_win, COLOR_PAIR(COLOR_CYAN_BLUE));
-	mvwin(name_win, y + 1, 0);
+	wbkgd(name_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+	wattrset(name_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+	mvwin(name_win, y, 12);
 
 	refresh();
 	wrefresh(name_win);
 
-	int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, 0};
+	int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, KEY_RETURN, 0};
 	int exit_key = nc_text_editor_win(name_win, tbl_name, TBL_NAME_LEN - 1, exit_keys);
 	if (exit_key == KEY_UP)
-		tc_mode = EDIT_FKS;
+		tc_mode = TC_EDIT_FKS;
 	else
-		tc_mode = EDIT_COLUMNS;
+		tc_mode = TC_EDIT_COLUMNS;
 }
 
 void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
-		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+		cp = COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD;
 
 	ui_bgline(stdscr, *y, cp);
 	move(*y,0);
-	attrset(cp | A_UNDERLINE);
-	addstr("Columns");
+	attrset(cp);
+	addstr("COLUMNS");
 	(*y)++;
 
 	// column headers
 	ui_bgline(stdscr, *y, cp);
-	attrset(cp);
+	attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
 	move(*y, 0);  addstr("NAME");
 	move(*y, 26); addstr("DATA-TYPE");
 	move(*y, 40); addstr("INDEXING");
@@ -1523,13 +1525,13 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 		ui_bgline(stdscr, *y, cp);
 		move(*y,0);
 
-		attrset(focused && *cur_row == i && *cur_field == 0 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 0 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
 		move(*y, 0);  addstr(cols[i].name);
 
-		attrset(focused && *cur_row == i && *cur_field == 1 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 1 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
 		move(*y, 26); addstr(cols[i].type);
 
-		attrset(focused && *cur_row == i && *cur_field == 2 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 2 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
 		if (cols[i].index_type == INDEX_NONE) {
 			move(*y, 40); addstr("NONE");
 		} else if (cols[i].index_type == INDEX_PRIMARY) {
@@ -1540,26 +1542,26 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 			move(*y, 40); addstr("INDEX");
 		}
 
-		attrset(focused && *cur_row == i && *cur_field == 3 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 3 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLACK));
 		move(*y, 50); addstr(cols[i].is_nullable ? "TRUE" : "FALSE");
 
-		attrset(focused && *cur_row == i && *cur_field == 4 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 4 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLACK));
 		move(*y, 60); addstr(cols[i].is_unsigned ? "TRUE" : "FALSE");
 
-		attrset(focused && *cur_row == i && *cur_field == 5 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 5 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLACK));
 		move(*y, 70); addstr(cols[i].is_auto_increment ? "TRUE" : "FALSE");
 
-		attrset(focused && *cur_row == i && *cur_field == 6 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_CYAN_BLUE));
+		attrset(focused && *cur_row == i && *cur_field == 6 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_YELLOW_BLACK));
 		move(*y, 81); addstr(cols[i].default_value[0] == '\0' ? "NULL" : cols[i].default_value);
 		(*y)++;
 	}
 
 	ui_bgline(stdscr, *y, COLOR_PAIR(COLOR_WHITE_BLACK));
-
 }
+
 void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
 	display_str("create table");
-	display_cmdf("COLUMNS", 2, "{a}dd-column", "{d}elete-column", "[ent]edit", "[tab]next");
+	display_cmdf("COLUMNS", 5, "{a}dd-column", "{d}elete-column", "[ent]edit", "[tab]next", "e{x}it");
 
 	int num_fields = 7;
 	int num_rows = 0;
@@ -1571,16 +1573,17 @@ void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field,
 INPUT_LISTEN:
 	switch (g) {
 		case KEY_TAB:
-			tc_mode = EDIT_FKS;
+			//tc_mode = TC_EDIT_FKS;
 			// tab through fields an rows, if we run out go to next form
-			//(*cur_field)++;
-			//if ((*cur_field) >= num_fields) {
-			//	(*cur_field) = 0;
-			//	(*cur_row)++;
-			//	if ((*cur_row) >= num_rows) {
-			//		(*cur_row) = 0;
-			//	}
-			//}
+			(*cur_field)++;
+			if ((*cur_field) >= num_fields) {
+				(*cur_field) = 0;
+				(*cur_row)++;
+				if ((*cur_row) >= num_rows) {
+					(*cur_row) = 0;
+					tc_mode = TC_EDIT_FKS;
+				}
+			}
 			break;
 		case KEY_RIGHT:
 			(*cur_field) = wrapi(*cur_field + 1, 0, num_fields - 1);
@@ -1589,59 +1592,68 @@ INPUT_LISTEN:
 			(*cur_field) = wrapi(*cur_field - 1, 0, num_fields - 1);
 			break;
 		case KEY_UP:
-			(*cur_row) = wrapi(*cur_row - 1, 0, num_rows - 1);
+			//(*cur_row) = wrapi(*cur_row - 1, 0, num_rows - 1);
 			//// if at zero then go to previous form
-			//if (*cur_row == 0) {
-			//	tc_mode = EDIT_NAME;
-			//	(*cur_row) = 0;
-			//	(*cur_field) = 0;
-			//} else
-			//	(*cur_row)--;
+			if (*cur_row == 0) {
+				tc_mode = TC_EDIT_NAME;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)--;
 			break;
 		case KEY_DOWN:
-			(*cur_row) = wrapi(*cur_row + 1, 0, num_rows - 1);
+			//(*cur_row) = wrapi(*cur_row + 1, 0, num_rows - 1);
 			//// if at zero then go to previous form
-			//if (*cur_row == num_rows - 1) {
-			//	tc_mode = EDIT_FKS;
-			//	(*cur_row) = 0;
-			//	(*cur_field) = 0;
-			//} else
-			//	(*cur_row)++;
+			if (*cur_row == num_rows - 1) {
+				tc_mode = TC_EDIT_FKS;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)++;
 			break;
 		case KEY_RETURN: {
 			// depending on the field we can change it
 			// for string fields we need to enter the edit mode for that field
-			int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, 0};
+			int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, KEY_RETURN, 0};
 			if (*cur_field == 0) {
 				//cols[*cur_row].name; editor for this
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 0);
-				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].name, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto INPUT_LISTEN;
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN;
+				}
 			}
 			if (*cur_field == 1) {
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 14, y + 3 + (*cur_row), 26);
-				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].type, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto INPUT_LISTEN;
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN;
+				}
 			}
 			if (*cur_field == 6) {
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 32, y + 3 + (*cur_row), 81);
-				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
-				wattrset(col_edit_win, COLOR_PAIR(COLOR_YELLOW_RED));
+				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
 				int exit_key = nc_text_editor_win(col_edit_win, cols[*cur_row].default_value, TC_COLUMN_STRLEN, exit_keys);
 				delwin(col_edit_win);
 
-				g = exit_key; goto INPUT_LISTEN;
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN;
+				}
 			}
 			// index enum
 			if (*cur_field == 2) {
@@ -1679,7 +1691,9 @@ INPUT_LISTEN:
 				(*cur_field) = 0;
 				num_rows++;
 			}
-
+			break;
+		case 'x':
+			tc_mode = TC_EDIT_EXIT;
 			break;
 	}
 }
@@ -1687,31 +1701,33 @@ INPUT_LISTEN:
 void render_foreign_form(int *y, bool focused) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
-		cp = COLOR_PAIR(COLOR_WHITE_BLUE);
+		cp = COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD;
 
 	ui_bgline(stdscr, *y, cp);
 	ui_bgline(stdscr, *y + 1, cp);
 
 	move(*y,0);
-	attrset(cp | A_UNDERLINE);
-	addstr("Foreign Keys");
+	attrset(cp);
+	addstr("FOREIGN KEYS");
 	(*y)++;
 
 	// render out foreign keys
 
 	(*y)++;
 }
+
 void edit_foreign_form(int y) {
 	display_str("create table");
-	display_cmdf("FOREIGN KEYS", 1, "[tab|esc]next");
+	display_cmdf("FOREIGN KEYS", 2, "[tab|esc]next", "e{x}it");
 	switch (getch()) {
-		case KEY_TAB: tc_mode = EDIT_EXIT; break;
+		case KEY_x: tc_mode = TC_EDIT_EXIT; break;
+		case KEY_TAB: tc_mode = TC_EDIT_EXIT; break;
 		//case KEY_x: run = false; break;
 	}
 }
 
 void run_table_create() {
-	tc_mode = EDIT_NAME;
+	tc_mode = TC_EDIT_NAME;
 	clear();
 	refresh();
 
@@ -1756,28 +1772,36 @@ void run_table_create() {
 
 		// render form
 		int ny=0;
-		render_name_form(&ny, tc_mode == EDIT_NAME, tbl_name);
+		render_name_form(&ny, tc_mode == TC_EDIT_NAME, tbl_name);
 
 		int cy = ny + 1;
-		render_column_form(&cy, tc_mode == EDIT_COLUMNS, columns, TC_MAX_COLS, &cur_field, &cur_row);
+		render_column_form(&cy, tc_mode == TC_EDIT_COLUMNS, columns, TC_MAX_COLS, &cur_field, &cur_row);
 
 		int fy = cy + 1;
-		render_foreign_form(&fy, tc_mode == EDIT_FKS);
+		render_foreign_form(&fy, tc_mode == TC_EDIT_FKS);
 
 		switch (tc_mode) {
-			case EDIT_NAME:
+			case TC_EDIT_NAME:
 				edit_name_form(0, tbl_name, TBL_NAME_LEN);
 				break;
-			case EDIT_COLUMNS:
+			case TC_EDIT_COLUMNS:
 				edit_column_form(ny, columns, TC_MAX_COLS, &cur_field, &cur_row);
 				break;
-			case EDIT_FKS:
+			case TC_EDIT_FKS:
 				edit_foreign_form(cy);
 				break;
-			case EDIT_EXIT:
+			case TC_EDIT_ABORT:
+				run = false;
+				break;
+			case TC_EDIT_EXIT:
+				if (tbl_name[0] == '\0') {
+					display_nonerror("No table name; aborting.", 1);
+					tc_mode = TC_EDIT_ABORT;
+					break;
+				}
+
 				// confirm to create syntax or listen for input to change the next form
-				display_strf_color(COLOR_WHITE_RED, "GENERATE CREATE SYNTAX [Y/n]?");
-				display_cmdf("", 0);
+				display_strf_color(COLOR_WHITE_RED, "CREATE SYNTAX: %s [Y/n]?", tbl_name);
 				switch (getch()) {
 					case KEY_y: {
 						// capture table create data and create the syntax for the SQL CREATE call
@@ -1860,10 +1884,10 @@ void run_table_create() {
 						break;
 					}
 					case KEY_UP:
-						tc_mode = EDIT_FKS;
+						tc_mode = TC_EDIT_FKS;
 						break;
 					default:
-						tc_mode = EDIT_NAME;
+						tc_mode = TC_EDIT_ABORT;
 						break;
 				}
 				break;
@@ -1877,6 +1901,9 @@ void run_table_create() {
 }
 
 
+//////////////////////////////////////
+// MAIN STATE MACHINE FOR INTERACTING
+// WITH SELECTED DATABASE
 
 bool cell_sort_asc = true;
 void run_db_interact(MYSQL *con) {

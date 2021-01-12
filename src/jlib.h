@@ -76,6 +76,7 @@
 #define COLOR_BLACK_GREEN	22
 #define COLOR_WHITE_GREEN	23
 #define COLOR_YELLOW_BLUE	24
+#define COLOR_GREEN_BLACK	25
 
 // LOG HELPERS
 void xlogopen(const char *location, char *mode);
