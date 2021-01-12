@@ -1785,7 +1785,6 @@ void render_foreign_form(int *y, bool focused, struct TC_FOREIGN_KEY *foreign_ke
 		} else if (foreign_keys[i].on_update == RESTRICT) {
 			move(*y, 90); addstr("RESTRICT");
 		}
-
 		(*y)++;
 	}
 
@@ -2032,6 +2031,7 @@ void run_table_create() {
 								char defbuf[64]; strclr(defbuf, 64);
 								if (columns[i].default_value[0] != '\0')
 									sprintf(defbuf, "DEFAULT '%s'", columns[i].default_value);
+
 								if (first) {
 									sprintf(colbuffer, "    %s %s %s %s %s %s,\n",
 										columns[i].name,
@@ -2062,22 +2062,64 @@ void run_table_create() {
 							if (columns[i].isset) {
 								switch (columns[i].index_type) {
 									case INDEX_PRIMARY:
-										sprintf(indbuffer, "%s    PRIMARY KEY(%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s    PRIMARY KEY (%s),\n", indbuffer, columns[i].name);
 										break;
 									case INDEX_UNIQUE:
-										sprintf(indbuffer, "%s    UNIQUE(%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s    UNIQUE (%s),\n", indbuffer, columns[i].name);
 										break;
 									case INDEX_INDEX:
-										sprintf(indbuffer, "%s    INDEX(%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s    INDEX (%s),\n", indbuffer, columns[i].name);
 										break;
 								}
 							}
 						}
+
+						char fkbuffer[1024];
+						strclr(fkbuffer, 1024);
+						first = false;
+						for (int i=0; i < TC_MAX_FKS; i++) {
+							if (foreign_keys[i].isset) {
+
+								if (first) {
+									sprintf(fkbuffer,
+										"    FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
+										foreign_keys[i].name,
+										foreign_keys[i].table,
+										foreign_keys[i].field,
+										(foreign_keys[i].on_delete == NO_ACTION ? "NO ACTION" :
+											(foreign_keys[i].on_delete == CASCADE ? "CASCADE" :
+												(foreign_keys[i].on_delete == SET_NULL ? "SET_NULL" : "RESTRICT"))),
+										(foreign_keys[i].on_update == NO_ACTION ? "NO ACTION" :
+											(foreign_keys[i].on_update == CASCADE ? "CASCADE" :
+												(foreign_keys[i].on_update == SET_NULL ? "SET_NULL" : "RESTRICT")))
+									);
+									first = false;
+								} else {
+									sprintf(fkbuffer,
+										"%s    FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
+										fkbuffer,
+										foreign_keys[i].name,
+										foreign_keys[i].table,
+										foreign_keys[i].field,
+										(foreign_keys[i].on_delete == NO_ACTION ? "NO ACTION" :
+											(foreign_keys[i].on_delete == CASCADE ? "CASCADE" :
+												(foreign_keys[i].on_delete == SET_NULL ? "SET_NULL" : "RESTRICT"))),
+										(foreign_keys[i].on_update == NO_ACTION ? "NO ACTION" :
+											(foreign_keys[i].on_update == CASCADE ? "CASCADE" :
+												(foreign_keys[i].on_update == SET_NULL ? "SET_NULL" : "RESTRICT")))
+									);
+								}
+							}
+						}
+
 						// trim trailing commas
 						int clen = strlen(colbuffer);
 						int ilen = strlen(indbuffer);
-						// todo foreigns
-						if (ilen > 0) {
+						int flen = strlen(fkbuffer);
+						if (flen > 0) {
+							if (fkbuffer[flen - 2] == ',')
+								fkbuffer[flen - 2] = '\n';
+						} else if (ilen > 0) {
 							if (indbuffer[ilen - 2] == ',')
 								indbuffer[ilen - 2] = '\n';
 						} else if (clen > 0) {
@@ -2085,15 +2127,16 @@ void run_table_create() {
 								colbuffer[clen - 2] = '\n';
 						}
 
-						//
 						set_queryf(
 							"CREATE TABLE %s (\n"
+							"%s"
 							"%s"
 							"%s"
 							")\n",
 							tbl_name,
 							colbuffer,
-							indbuffer
+							indbuffer,
+							fkbuffer
 						);
 						run = false;
 						break;
@@ -2309,9 +2352,10 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (env_has_mysqldump)
-						display_cmdf("TABLES", 7,
+						display_cmdf("TABLES", 8,
 							"[ent]{s}elect-100",
-							"{k}eys",
+							"{i}ndices",
+							"{f}oreign-keys",
 							"{d}escribe",
 							"s{h}ow-create",
 							"{c}reate",
@@ -2472,11 +2516,29 @@ void run_db_interact(MYSQL *con) {
 										execute_query(true);
 									}
 									break;
-								case KEY_k:
+								case KEY_i:
 									if (tbl_result && tbl_count > 0) {
 										mysql_data_seek(tbl_result, tbl_index);
 										MYSQL_ROW r = mysql_fetch_row(tbl_result);
 										set_queryf("SHOW KEYS FROM %s", r[0]);
+										execute_query(true);
+									}
+									break;
+								case KEY_f:
+									if (tbl_result && tbl_count > 0) {
+										mysql_data_seek(tbl_result, tbl_index);
+										MYSQL_ROW r = mysql_fetch_row(tbl_result);
+										// use REFERENCED_TABLE_NAME to see other tables linking to us
+										set_queryf(
+												"SELECT DISTINCT KCU.COLUMN_NAME, REFERENCED_TABLE_SCHEMA, KCU.REFERENCED_TABLE_NAME, KCU.REFERENCED_COLUMN_NAME, UPDATE_RULE, DELETE_RULE\n"
+												"  FROM information_schema.KEY_COLUMN_USAGE KCU\n"
+												"  INNER JOIN information_schema.referential_constraints RC ON KCU.CONSTRAINT_NAME = RC.CONSTRAINT_NAME\n"
+												"  WHERE TABLE_SCHEMA = '%s' AND KCU.TABLE_NAME = '%s'\n"
+												"    AND KCU.REFERENCED_TABLE_NAME IS NOT NULL\n"
+												"  ORDER BY KCU.TABLE_NAME, KCU.COLUMN_NAME\n",
+											db_name,
+											r[0]
+										);
 										execute_query(true);
 									}
 									break;
