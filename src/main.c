@@ -1446,6 +1446,26 @@ struct TC_COLUMN {
 	char default_value[TC_COLUMN_STRLEN];
 };
 
+enum TC_FK_ACTION {
+	NO_ACTION,
+	CASCADE,
+	SET_NULL,
+	RESTRICT
+};
+#define TC_FK_ACOUNT_COUNT 4
+#define TC_FK_STRLEN 64
+#define TC_FK_TABLE_STRLEN 64
+#define TC_FK_FIELD_STRLEN 64
+#define TC_MAX_FKS 32
+struct TC_FOREIGN_KEY {
+	bool isset;
+	char name[TC_FK_STRLEN];
+	char table[TC_FK_TABLE_STRLEN];
+	char field[TC_FK_FIELD_STRLEN];
+	enum TC_FK_ACTION on_delete;
+	enum TC_FK_ACTION on_update;
+};
+
 void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
 	col_to->isset = col_from->isset;
 	strcpy(col_to->name, col_from->name);
@@ -1457,11 +1477,21 @@ void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
 	strcpy(col_to->default_value, col_from->default_value);
 }
 
+void copy_fks(struct TC_FOREIGN_KEY *fk_from, struct TC_FOREIGN_KEY *fk_to) {
+	fk_to->isset = fk_from->isset;
+	strcpy(fk_to->name, fk_from->name);
+	strcpy(fk_to->table, fk_from->table);
+	strcpy(fk_to->field, fk_from->field);
+	fk_to->on_delete = fk_from->on_delete;
+	fk_to->on_update = fk_from->on_update;
+}
+
+// RENDERERS AND EDITORS FOR FORMS
+
 void render_name_form(int *y, bool focused, char *tbl_name) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
 		cp = COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD;
-
 	ui_bgline(stdscr, *y, cp);
 	ui_bgline(stdscr, *y + 1, cp);
 
@@ -1523,13 +1553,11 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 			continue;
 
 		ui_bgline(stdscr, *y, cp);
-		move(*y,0);
-
 		attrset(focused && *cur_row == i && *cur_field == 0 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
-		move(*y, 0);  addstr(cols[i].name);
+		move(*y, 0);  addstr(strlen(cols[i].name) > 0 ? cols[i].name : "-");
 
 		attrset(focused && *cur_row == i && *cur_field == 1 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
-		move(*y, 26); addstr(cols[i].type);
+		move(*y, 26); addstr(strlen(cols[i].type) > 0 ? cols[i].type : "-");
 
 		attrset(focused && *cur_row == i && *cur_field == 2 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
 		if (cols[i].index_type == INDEX_NONE) {
@@ -1552,11 +1580,11 @@ void render_column_form(int *y, bool focused, struct TC_COLUMN *cols, int colmax
 		move(*y, 70); addstr(cols[i].is_auto_increment ? "TRUE" : "FALSE");
 
 		attrset(focused && *cur_row == i && *cur_field == 6 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_YELLOW_BLACK));
-		move(*y, 81); addstr(cols[i].default_value[0] == '\0' ? "NULL" : cols[i].default_value);
+		move(*y, 81); addstr(strlen(cols[i].default_value) > 0 ? cols[i].default_value : "-");
 		(*y)++;
 	}
 
-	ui_bgline(stdscr, *y, COLOR_PAIR(COLOR_WHITE_BLACK));
+	ui_bgline(stdscr, *y, COLOR_PAIR(COLOR_WHITE_BLACK)); // clear old row data from screen
 }
 
 void edit_column_form(int y, struct TC_COLUMN *cols, int colmax, int *cur_field, int *cur_row) {
@@ -1616,7 +1644,6 @@ INPUT_LISTEN:
 			// for string fields we need to enter the edit mode for that field
 			int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, KEY_RETURN, 0};
 			if (*cur_field == 0) {
-				//cols[*cur_row].name; editor for this
 				WINDOW *col_edit_win;
 				col_edit_win = newwin(1, 24, y + 3 + (*cur_row), 0);
 				wbkgdset(col_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
@@ -1698,7 +1725,7 @@ INPUT_LISTEN:
 	}
 }
 
-void render_foreign_form(int *y, bool focused) {
+void render_foreign_form(int *y, bool focused, struct TC_FOREIGN_KEY *foreign_keys, int foreign_key_max, int *cur_field, int *cur_row) {
 	int cp = COLOR_PAIR(COLOR_WHITE_BLACK);
 	if (focused)
 		cp = COLOR_PAIR(COLOR_WHITE_BLACK) | A_BOLD;
@@ -1712,17 +1739,193 @@ void render_foreign_form(int *y, bool focused) {
 	(*y)++;
 
 	// render out foreign keys
-
+	ui_bgline(stdscr, *y, cp);
+	attrset(COLOR_PAIR(COLOR_WHITE_BLACK));
+	move(*y, 0);  addstr("COLUMN");
+	move(*y, 26); addstr("FOREIGN-TABLE");
+	move(*y, 52); addstr("FOREIGN-FIELD");
+	move(*y, 78); addstr("ON-DELETE");
+	move(*y, 90); addstr("ON-UPDATE");
+	attrset(cp);
 	(*y)++;
+
+	// render out columns for table create
+	for (int i=0; i < foreign_key_max; i++) {
+		if (!foreign_keys[i].isset)
+			continue;
+
+		ui_bgline(stdscr, *y, cp);
+		attrset(focused && *cur_row == i && *cur_field == 0 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
+		move(*y, 0); addstr(strlen(foreign_keys[i].name) > 0 ? foreign_keys[i].name : "-");
+
+		attrset(focused && *cur_row == i && *cur_field == 1 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
+		move(*y, 26); addstr(strlen(foreign_keys[i].table) > 0 ? foreign_keys[i].table : "-");
+
+		attrset(focused && *cur_row == i && *cur_field == 2 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_WHITE_BLACK));
+		move(*y, 52); addstr(strlen(foreign_keys[i].field) > 0 ? foreign_keys[i].field : "-");
+
+		attrset(focused && *cur_row == i && *cur_field == 3 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
+		if (foreign_keys[i].on_delete == INDEX_NONE) {
+			move(*y, 78); addstr("NONE");
+		} else if (foreign_keys[i].on_delete == INDEX_PRIMARY) {
+			move(*y, 78); addstr("PRIMARY");
+		} else if (foreign_keys[i].on_delete == INDEX_UNIQUE) {
+			move(*y, 78); addstr("UNIQUE");
+		} else if (foreign_keys[i].on_delete == INDEX_INDEX) {
+			move(*y, 78); addstr("INDEX");
+		}
+
+		attrset(focused && *cur_row == i && *cur_field == 4 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
+		if (foreign_keys[i].on_update == INDEX_NONE) {
+			move(*y, 90); addstr("NONE");
+		} else if (foreign_keys[i].on_update == INDEX_PRIMARY) {
+			move(*y, 90); addstr("PRIMARY");
+		} else if (foreign_keys[i].on_update == INDEX_UNIQUE) {
+			move(*y, 90); addstr("UNIQUE");
+		} else if (foreign_keys[i].on_update == INDEX_INDEX) {
+			move(*y, 90); addstr("INDEX");
+		}
+
+		(*y)++;
+	}
+
+	ui_bgline(stdscr, *y, COLOR_PAIR(COLOR_WHITE_BLACK)); // clear old row data from screen
 }
 
-void edit_foreign_form(int y) {
+void edit_foreign_form(int y, struct TC_FOREIGN_KEY *foreign_keys, int foreign_key_max, int *cur_field, int *cur_row) {
 	display_str("create table");
-	display_cmdf("FOREIGN KEYS", 2, "[tab|esc]next", "e{x}it");
-	switch (getch()) {
-		case KEY_x: tc_mode = TC_EDIT_EXIT; break;
-		case KEY_TAB: tc_mode = TC_EDIT_EXIT; break;
-		//case KEY_x: run = false; break;
+	display_cmdf("FOREIGN KEYS", 5, "{a}dd-key", "{d}elete-key", "[ent]edit", "[tab]next", "e{x}it");
+
+	int num_fields = 5;
+	int num_rows = 0;
+	for (int i=0; i<foreign_key_max; i++)
+		if (foreign_keys[i].isset)
+			num_rows++;
+
+	int g = getch();
+INPUT_LISTEN2:
+	switch (g) {
+		case KEY_TAB:
+			//tc_mode = TC_EDIT_FKS;
+			// tab through fields an rows, if we run out go to next form
+			if (num_rows == 0) {
+				tc_mode = TC_EDIT_NAME;
+			} else {
+				(*cur_field)++;
+				if ((*cur_field) >= num_fields) {
+					(*cur_field) = 0;
+					(*cur_row)++;
+					if ((*cur_row) >= num_rows) {
+						(*cur_row) = 0;
+						tc_mode = TC_EDIT_NAME;
+					}
+				}
+			}
+			break;
+		case KEY_RIGHT:
+			(*cur_field) = wrapi(*cur_field + 1, 0, num_fields - 1);
+			break;
+		case KEY_LEFT:
+			(*cur_field) = wrapi(*cur_field - 1, 0, num_fields - 1);
+			break;
+		case KEY_UP:
+			//(*cur_row) = wrapi(*cur_row - 1, 0, num_rows - 1);
+			//// if at zero then go to previous form
+			if (*cur_row == 0) {
+				tc_mode = TC_EDIT_COLUMNS;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)--;
+			break;
+		case KEY_DOWN:
+			//(*cur_row) = wrapi(*cur_row + 1, 0, num_rows - 1);
+			//// if at zero then go to previous form
+			if (*cur_row == num_rows - 1 || num_rows == 0) {
+				tc_mode = TC_EDIT_NAME;
+				(*cur_row) = 0;
+				(*cur_field) = 0;
+			} else
+				(*cur_row)++;
+			break;
+		case KEY_RETURN: {
+			// depending on the field we can change it
+			// for string fields we need to enter the edit mode for that field
+			int exit_keys[] = {KEY_TAB, KEY_UP, KEY_DOWN, KEY_RETURN, 0};
+			if (*cur_field == 0) {
+				WINDOW *fk_edit_win;
+				fk_edit_win = newwin(1, 25, y + 3 + (*cur_row), 0);
+				wbkgdset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				int exit_key = nc_text_editor_win(fk_edit_win, foreign_keys[*cur_row].name, TC_FK_STRLEN, exit_keys);
+				delwin(fk_edit_win);
+
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN2;
+				}
+			}
+			if (*cur_field == 1) {
+				WINDOW *fk_edit_win;
+				fk_edit_win = newwin(1, 25, y + 3 + (*cur_row), 26);
+				wbkgdset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				int exit_key = nc_text_editor_win(fk_edit_win, foreign_keys[*cur_row].table, TC_FK_TABLE_STRLEN, exit_keys);
+				delwin(fk_edit_win);
+
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN2;
+				}
+			}
+			if (*cur_field == 2) {
+				WINDOW *fk_edit_win;
+				fk_edit_win = newwin(1, 25, y + 3 + (*cur_row), 52);
+				wbkgdset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				wattrset(fk_edit_win, COLOR_PAIR(COLOR_WHITE_BLUE));
+				int exit_key = nc_text_editor_win(fk_edit_win, foreign_keys[*cur_row].field, TC_FK_FIELD_STRLEN, exit_keys);
+				delwin(fk_edit_win);
+
+				if (exit_key != KEY_RETURN) {
+					g = exit_key;
+					goto INPUT_LISTEN2;
+				}
+			}
+			// enums
+			if (*cur_field == 3) {
+				foreign_keys[*cur_row].on_delete++;
+				if (foreign_keys[*cur_row].on_delete >= TC_FK_ACOUNT_COUNT)
+					foreign_keys[*cur_row].on_delete = 0;
+			}
+			if (*cur_field == 4) {
+				foreign_keys[*cur_row].on_update++;
+				if (foreign_keys[*cur_row].on_update >= TC_FK_ACOUNT_COUNT)
+					foreign_keys[*cur_row].on_update = 0;
+			}
+			break;
+		}
+		case 'd':
+			// delete the current row
+			foreign_keys[*cur_row].isset = false;
+			// copy all affter before
+			for (int i=(*cur_row); i < foreign_key_max - 1; i++) {
+				copy_fks(&foreign_keys[i + 1], &foreign_keys[i]);
+			}
+			if ((*cur_row) >= num_rows - 1)
+				(*cur_row)--;
+			break;
+		case 'a':
+			// add a new row
+			if (num_rows < TC_MAX_FKS) {
+				foreign_keys[num_rows].isset = true;
+				(*cur_row) = num_rows;
+				(*cur_field) = 0;
+				num_rows++;
+			}
+			break;
+		case 'x':
+			tc_mode = TC_EDIT_EXIT;
+			break;
 	}
 }
 
@@ -1740,7 +1943,6 @@ void run_table_create() {
 	name_win = newwin(1, TBL_NAME_LEN - 1, 0, 0);
 
 	// columns
-	int colcount = 0;
 	struct TC_COLUMN columns[TC_MAX_COLS];
 	int cur_field = 0, cur_row = 0;
 	// initialize all columns
@@ -1756,7 +1958,7 @@ void run_table_create() {
 			strclr(columns[i].default_value, TC_COLUMN_STRLEN);
 		} else {
 			columns[i].isset = false;
-			strcpy(columns[i].name, "foo");
+			strclr(columns[i].name, TC_COLUMN_STRLEN);
 			strcpy(columns[i].type, "VARCHAR(32)");
 			columns[i].index_type = INDEX_NONE;
 			columns[i].is_nullable = false;
@@ -1764,6 +1966,19 @@ void run_table_create() {
 			columns[i].is_unsigned = false;
 			strclr(columns[i].default_value, TC_COLUMN_STRLEN);
 		}
+	}
+
+	// foreign keys
+	struct TC_FOREIGN_KEY foreign_keys[TC_MAX_FKS];
+	int cur_fk_field = 0, cur_fk_row = 0;
+	// initialise
+	for (int i=0; i < TC_MAX_FKS; i++) {
+		foreign_keys[i].isset = false;
+		strcpy(foreign_keys[i].name, "");
+		strcpy(foreign_keys[i].table, "");
+		strcpy(foreign_keys[i].field, "");
+		foreign_keys[i].on_delete = CASCADE;
+		foreign_keys[i].on_update = CASCADE;
 	}
 
 	// render form
@@ -1778,7 +1993,7 @@ void run_table_create() {
 		render_column_form(&cy, tc_mode == TC_EDIT_COLUMNS, columns, TC_MAX_COLS, &cur_field, &cur_row);
 
 		int fy = cy + 1;
-		render_foreign_form(&fy, tc_mode == TC_EDIT_FKS);
+		render_foreign_form(&fy, tc_mode == TC_EDIT_FKS, foreign_keys, TC_MAX_FKS, &cur_fk_field, &cur_fk_row);
 
 		switch (tc_mode) {
 			case TC_EDIT_NAME:
@@ -1788,7 +2003,7 @@ void run_table_create() {
 				edit_column_form(ny, columns, TC_MAX_COLS, &cur_field, &cur_row);
 				break;
 			case TC_EDIT_FKS:
-				edit_foreign_form(cy);
+				edit_foreign_form(cy, foreign_keys, TC_MAX_FKS, &cur_fk_field, &cur_fk_row);
 				break;
 			case TC_EDIT_ABORT:
 				run = false;
@@ -1873,8 +2088,8 @@ void run_table_create() {
 						//
 						set_queryf(
 							"CREATE TABLE %s (\n"
-							"%s\n"
-							"%s\n"
+							"%s"
+							"%s"
 							")\n",
 							tbl_name,
 							colbuffer,
