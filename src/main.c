@@ -1765,25 +1765,25 @@ void render_foreign_form(int *y, bool focused, struct TC_FOREIGN_KEY *foreign_ke
 		move(*y, 52); addstr(strlen(foreign_keys[i].field) > 0 ? foreign_keys[i].field : "-");
 
 		attrset(focused && *cur_row == i && *cur_field == 3 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
-		if (foreign_keys[i].on_delete == INDEX_NONE) {
-			move(*y, 78); addstr("NONE");
-		} else if (foreign_keys[i].on_delete == INDEX_PRIMARY) {
-			move(*y, 78); addstr("PRIMARY");
-		} else if (foreign_keys[i].on_delete == INDEX_UNIQUE) {
-			move(*y, 78); addstr("UNIQUE");
-		} else if (foreign_keys[i].on_delete == INDEX_INDEX) {
-			move(*y, 78); addstr("INDEX");
+		if (foreign_keys[i].on_delete == NO_ACTION) {
+			move(*y, 78); addstr("NO_ACTION");
+		} else if (foreign_keys[i].on_delete == CASCADE) {
+			move(*y, 78); addstr("CASCADE");
+		} else if (foreign_keys[i].on_delete == SET_NULL) {
+			move(*y, 78); addstr("SET_NULL");
+		} else if (foreign_keys[i].on_delete == RESTRICT) {
+			move(*y, 78); addstr("RESTRICT");
 		}
 
 		attrset(focused && *cur_row == i && *cur_field == 4 ? COLOR_PAIR(COLOR_BLACK_CYAN) : COLOR_PAIR(COLOR_MAGENTA_BLACK));
 		if (foreign_keys[i].on_update == INDEX_NONE) {
-			move(*y, 90); addstr("NONE");
-		} else if (foreign_keys[i].on_update == INDEX_PRIMARY) {
-			move(*y, 90); addstr("PRIMARY");
-		} else if (foreign_keys[i].on_update == INDEX_UNIQUE) {
-			move(*y, 90); addstr("UNIQUE");
-		} else if (foreign_keys[i].on_update == INDEX_INDEX) {
-			move(*y, 90); addstr("INDEX");
+			move(*y, 90); addstr("NO_ACTION");
+		} else if (foreign_keys[i].on_update == CASCADE) {
+			move(*y, 90); addstr("CASCADE");
+		} else if (foreign_keys[i].on_update == SET_NULL) {
+			move(*y, 90); addstr("SET_NULL");
+		} else if (foreign_keys[i].on_update == RESTRICT) {
+			move(*y, 90); addstr("RESTRICT");
 		}
 
 		(*y)++;
