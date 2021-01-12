@@ -113,6 +113,32 @@ void strstripspaces(char* str) {
 	str[x] = '\0';
 }
 
+// collapses a string characters that are whitespace
+// it only leaves spaces between alphabetic characters
+void str_collapse_spaces(char *str) {
+	int len = strlen(str);
+	int collapse_count = 0;
+	for (int i=0; i < len - collapse_count; i++) {
+		// if i am a space and our next character is a letter
+		char c = str[i], cn = str[i+1];
+		bool is_alphanumeric = ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122));
+		bool next_is_alphanumeric = ((cn >= 48 && cn <= 57) || (cn >= 65 && cn <= 90) || (cn >= 97 && cn <= 122));
+		bool is_space = isspace(c);
+		bool next_is_space = isspace(cn);
+		if ((i == 0 && is_space) || (is_space && !next_is_alphanumeric)) {
+			// collapse backwards
+			for (int j=i; j < len - 1 - collapse_count; j++) {
+				str[j] = str[j + 1];
+			}
+			collapse_count++;
+
+			i--; // repeat at same position
+			continue;
+		}
+	}
+	str[len - collapse_count] = '\0';
+}
+
 void strflat(char *str) {
 	// replace rando whitespace with single spaces
 	strchrplc(str, '\t', ' ');
@@ -189,6 +215,7 @@ void strsplit(const char *text, char splitter, int m, int n, char words[m][n], i
 	}
 	*wordlen = wordcount;
 }
+
 void strlines(int m, int n, char words[m][n], int sentence_size, int o, int p, char lines[o][p], int *linelen) {
 	// take a collection of words that are null terminated and a sentence size
 	// and copy them into the lines buffer
@@ -222,6 +249,7 @@ void strlines(int m, int n, char words[m][n], int sentence_size, int o, int p, c
 	}
 	*linelen = linepos + 1;
 }
+
 void wordwrap(const char *text, int size, void (*on_line)(const char *line)) {
 	int wordlen = 0;
 	char words[1056][32];

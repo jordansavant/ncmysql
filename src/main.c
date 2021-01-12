@@ -2033,7 +2033,7 @@ void run_table_create() {
 									sprintf(defbuf, "DEFAULT '%s'", columns[i].default_value);
 
 								if (first) {
-									sprintf(colbuffer, "    %s %s %s %s %s %s,\n",
+									sprintf(colbuffer, "  %s %s %s %s %s %s,\n",
 										columns[i].name,
 										columns[i].type,
 										columns[i].is_unsigned ? "UNSIGNED" : "",
@@ -2043,7 +2043,7 @@ void run_table_create() {
 									);
 									first = false;
 								} else {
-									sprintf(colbuffer, "%s    %s %s %s %s %s %s,\n",
+									sprintf(colbuffer, "%s  %s %s %s %s %s %s,\n",
 										colbuffer,
 										columns[i].name,
 										columns[i].type,
@@ -2062,13 +2062,13 @@ void run_table_create() {
 							if (columns[i].isset) {
 								switch (columns[i].index_type) {
 									case INDEX_PRIMARY:
-										sprintf(indbuffer, "%s    PRIMARY KEY (%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s  PRIMARY KEY (%s),\n", indbuffer, columns[i].name);
 										break;
 									case INDEX_UNIQUE:
-										sprintf(indbuffer, "%s    UNIQUE (%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s  UNIQUE (%s),\n", indbuffer, columns[i].name);
 										break;
 									case INDEX_INDEX:
-										sprintf(indbuffer, "%s    INDEX (%s),\n", indbuffer, columns[i].name);
+										sprintf(indbuffer, "%s  INDEX (%s),\n", indbuffer, columns[i].name);
 										break;
 								}
 							}
@@ -2082,7 +2082,7 @@ void run_table_create() {
 
 								if (first) {
 									sprintf(fkbuffer,
-										"    FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
+										"  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
 										foreign_keys[i].name,
 										foreign_keys[i].table,
 										foreign_keys[i].field,
@@ -2096,7 +2096,7 @@ void run_table_create() {
 									first = false;
 								} else {
 									sprintf(fkbuffer,
-										"%s    FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
+										"%s  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
 										fkbuffer,
 										foreign_keys[i].name,
 										foreign_keys[i].table,
@@ -2126,12 +2126,15 @@ void run_table_create() {
 							if (colbuffer[clen - 2] == ',')
 								colbuffer[clen - 2] = '\n';
 						}
+						str_collapse_spaces(colbuffer);
+						str_collapse_spaces(indbuffer);
+						str_collapse_spaces(fkbuffer);
 
 						set_queryf(
 							"CREATE TABLE %s (\n"
-							"%s"
-							"%s"
-							"%s"
+							"  %s\n"
+							"  %s\n"
+							"  %s\n"
 							")\n",
 							tbl_name,
 							colbuffer,
@@ -2535,7 +2538,7 @@ void run_db_interact(MYSQL *con) {
 												"  INNER JOIN information_schema.referential_constraints RC ON KCU.CONSTRAINT_NAME = RC.CONSTRAINT_NAME\n"
 												"  WHERE TABLE_SCHEMA = '%s' AND KCU.TABLE_NAME = '%s'\n"
 												"    AND KCU.REFERENCED_TABLE_NAME IS NOT NULL\n"
-												"  ORDER BY KCU.TABLE_NAME, KCU.COLUMN_NAME\n",
+												"  ORDER BY KCU.TABLE_NAME, KCU.COLUMN_NAME",
 											db_name,
 											r[0]
 										);
