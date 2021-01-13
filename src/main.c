@@ -2012,15 +2012,12 @@ void run_table_create() {
 				run = false;
 				break;
 			case TC_EDIT_EXIT:
-				if (tbl_name[0] == '\0') {
-					display_nonerror("No table name; aborting.", 1);
-					tc_mode = TC_EDIT_ABORT;
-					break;
-				}
-
 				// confirm to create syntax or listen for input to change the next form
-				display_strf_color(COLOR_WHITE_RED, "CREATE SYNTAX: %s [Y/n]?", tbl_name);
+				display_strf_color(COLOR_WHITE_RED, "CREATE SYNTAX: %s [Y/n/q]?", tbl_name);
 				switch (getch()) {
+					case KEY_q:
+						tc_mode = TC_EDIT_ABORT;
+						break;
 					case KEY_y: {
 						// capture table create data and create the syntax for the SQL CREATE call
 						// collect the columns to be created
@@ -2058,17 +2055,17 @@ void run_table_create() {
 							if (columns[i].isset && columns[i].index_type != INDEX_NONE) {
 								strclr(columns[i].to_string_index, TC_TOSTRING_STRLEN);
 
-                                sprintf(columns[i].to_string_index, "%s (%s),",
-                                    (columns[i].index_type == INDEX_PRIMARY ? "PRIMARY KEY" :
-                                        (columns[i].index_type == INDEX_UNIQUE ? "UNIQUE" : "INDEX")),
-                                    columns[i].name
-                                );
+								sprintf(columns[i].to_string_index, "%s (%s),",
+									(columns[i].index_type == INDEX_PRIMARY ? "PRIMARY KEY" :
+										(columns[i].index_type == INDEX_UNIQUE ? "UNIQUE" : "INDEX")),
+									columns[i].name
+								);
 
-                                str_collapse_spaces(columns[i].to_string_index);
-                                if (indbuffer[0])
-                                    sprintf(indbuffer, "%s\n  %s", indbuffer, columns[i].to_string_index);
-                                else
-                                    sprintf(indbuffer, "%s", columns[i].to_string_index);
+								str_collapse_spaces(columns[i].to_string_index);
+								if (indbuffer[0])
+									sprintf(indbuffer, "%s\n  %s", indbuffer, columns[i].to_string_index);
+								else
+									sprintf(indbuffer, "%s", columns[i].to_string_index);
 							}
 						}
 
@@ -2128,11 +2125,8 @@ void run_table_create() {
 						run = false;
 						break;
 					}
-					case KEY_UP:
-						tc_mode = TC_EDIT_FKS;
-						break;
 					default:
-						tc_mode = TC_EDIT_ABORT;
+						tc_mode = TC_EDIT_NAME;
 						break;
 				}
 				break;
@@ -2339,7 +2333,7 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (env_has_mysqldump)
-						display_cmdf("TABLES", 8,
+						display_cmdf("TABLES", 10,
 							"[ent]{s}elect-100",
 							"{i}ndices",
 							"{f}oreign-keys",
@@ -2352,7 +2346,7 @@ void run_db_interact(MYSQL *con) {
 							"e{x}it"
 						);
 					else
-						display_cmdf("TABLES", 6,
+						display_cmdf("TABLES", 8,
 							"[ent]{s}elect-100",
 							"{k}eys",
 							"{d}escribe",
@@ -2521,7 +2515,7 @@ void run_db_interact(MYSQL *con) {
 												"  FROM information_schema.KEY_COLUMN_USAGE KCU\n"
 												"  INNER JOIN information_schema.referential_constraints RC ON KCU.CONSTRAINT_NAME = RC.CONSTRAINT_NAME\n"
 												"  WHERE TABLE_SCHEMA = '%s' AND KCU.TABLE_NAME = '%s'\n"
-												"    AND KCU.REFERENCED_TABLE_NAME IS NOT NULL\n"
+												"  AND KCU.REFERENCED_TABLE_NAME IS NOT NULL\n"
 												"  ORDER BY KCU.TABLE_NAME, KCU.COLUMN_NAME",
 											db_name,
 											r[0]
