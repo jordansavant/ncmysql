@@ -1434,6 +1434,7 @@ enum TC_INDEX_TYPE {
 };
 #define TC_INDEX_TYPE_COUNT 4
 #define TC_COLUMN_STRLEN 64
+#define TC_TOSTRING_STRLEN 256
 #define TC_MAX_COLS 32
 struct TC_COLUMN {
 	bool isset;
@@ -1444,6 +1445,8 @@ struct TC_COLUMN {
 	bool is_auto_increment;
 	bool is_unsigned;
 	char default_value[TC_COLUMN_STRLEN];
+	char to_string[TC_TOSTRING_STRLEN];
+	char to_string_index[TC_TOSTRING_STRLEN];
 };
 
 enum TC_FK_ACTION {
@@ -1464,6 +1467,7 @@ struct TC_FOREIGN_KEY {
 	char field[TC_FK_FIELD_STRLEN];
 	enum TC_FK_ACTION on_delete;
 	enum TC_FK_ACTION on_update;
+	char to_string[TC_TOSTRING_STRLEN];
 };
 
 void copy_cols(struct TC_COLUMN *col_from, struct TC_COLUMN *col_to) {
@@ -2022,93 +2026,76 @@ void run_table_create() {
 						// collect the columns to be created
 						char colbuffer[1024];
 						strclr(colbuffer, 1024);
-						bool first=true;
 						for (int i=0; i < TC_MAX_COLS; i++) {
 							if (columns[i].isset) {
-								// id INT NOT NULL AUTO_INCREMENT
-								// test VARCHAR(255) DEFAULT NULL
-								// code VARCHAR(32)
-								char defbuf[64]; strclr(defbuf, 64);
+								strclr(columns[i].to_string, TC_TOSTRING_STRLEN);
+
+								char defbuf[64];
+								strclr(defbuf, 64);
 								if (columns[i].default_value[0] != '\0')
 									sprintf(defbuf, "DEFAULT '%s'", columns[i].default_value);
 
-								if (first) {
-									sprintf(colbuffer, "  %s %s %s %s %s %s,\n",
-										columns[i].name,
-										columns[i].type,
-										columns[i].is_unsigned ? "UNSIGNED" : "",
-										columns[i].is_nullable ? "" : "NOT NULL",
-										columns[i].is_auto_increment ? "AUTO_INCREMENT" : "",
-										defbuf
-									);
-									first = false;
-								} else {
-									sprintf(colbuffer, "%s  %s %s %s %s %s %s,\n",
-										colbuffer,
-										columns[i].name,
-										columns[i].type,
-										columns[i].is_unsigned ? "UNSIGNED" : "",
-										columns[i].is_nullable ? "" : "NOT NULL",
-										columns[i].is_auto_increment ? "AUTO_INCREMENT" : "",
-										defbuf
-									);
-								}
+								sprintf(columns[i].to_string, "%s %s %s %s %s %s,",
+									columns[i].name,
+									columns[i].type,
+									columns[i].is_unsigned ? "UNSIGNED" : "",
+									columns[i].is_nullable ? "" : "NOT NULL",
+									columns[i].is_auto_increment ? "AUTO_INCREMENT" : "",
+									defbuf
+								);
+
+								str_collapse_spaces(columns[i].to_string);
+								if (colbuffer[0])
+									sprintf(colbuffer, "%s\n  %s", colbuffer, columns[i].to_string);
+								else
+									sprintf(colbuffer, "%s", columns[i].to_string);
 							}
 						}
 
 						char indbuffer[1024];
 						strclr(indbuffer, 1024);
 						for (int i=0; i < TC_MAX_COLS; i++) {
-							if (columns[i].isset) {
-								switch (columns[i].index_type) {
-									case INDEX_PRIMARY:
-										sprintf(indbuffer, "%s  PRIMARY KEY (%s),\n", indbuffer, columns[i].name);
-										break;
-									case INDEX_UNIQUE:
-										sprintf(indbuffer, "%s  UNIQUE (%s),\n", indbuffer, columns[i].name);
-										break;
-									case INDEX_INDEX:
-										sprintf(indbuffer, "%s  INDEX (%s),\n", indbuffer, columns[i].name);
-										break;
-								}
+							if (columns[i].isset && columns[i].index_type != INDEX_NONE) {
+								strclr(columns[i].to_string_index, TC_TOSTRING_STRLEN);
+
+                                sprintf(columns[i].to_string_index, "%s (%s),",
+                                    (columns[i].index_type == INDEX_PRIMARY ? "PRIMARY KEY" :
+                                        (columns[i].index_type == INDEX_UNIQUE ? "UNIQUE" : "INDEX")),
+                                    columns[i].name
+                                );
+
+                                str_collapse_spaces(columns[i].to_string_index);
+                                if (indbuffer[0])
+                                    sprintf(indbuffer, "%s\n  %s", indbuffer, columns[i].to_string_index);
+                                else
+                                    sprintf(indbuffer, "%s", columns[i].to_string_index);
 							}
 						}
 
 						char fkbuffer[1024];
 						strclr(fkbuffer, 1024);
-						first = false;
 						for (int i=0; i < TC_MAX_FKS; i++) {
 							if (foreign_keys[i].isset) {
+								strclr(foreign_keys[i].to_string, TC_TOSTRING_STRLEN);
 
-								if (first) {
-									sprintf(fkbuffer,
-										"  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
-										foreign_keys[i].name,
-										foreign_keys[i].table,
-										foreign_keys[i].field,
-										(foreign_keys[i].on_delete == NO_ACTION ? "NO ACTION" :
-											(foreign_keys[i].on_delete == CASCADE ? "CASCADE" :
-												(foreign_keys[i].on_delete == SET_NULL ? "SET_NULL" : "RESTRICT"))),
-										(foreign_keys[i].on_update == NO_ACTION ? "NO ACTION" :
-											(foreign_keys[i].on_update == CASCADE ? "CASCADE" :
-												(foreign_keys[i].on_update == SET_NULL ? "SET_NULL" : "RESTRICT")))
-									);
-									first = false;
-								} else {
-									sprintf(fkbuffer,
-										"%s  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,\n",
-										fkbuffer,
-										foreign_keys[i].name,
-										foreign_keys[i].table,
-										foreign_keys[i].field,
-										(foreign_keys[i].on_delete == NO_ACTION ? "NO ACTION" :
-											(foreign_keys[i].on_delete == CASCADE ? "CASCADE" :
-												(foreign_keys[i].on_delete == SET_NULL ? "SET_NULL" : "RESTRICT"))),
-										(foreign_keys[i].on_update == NO_ACTION ? "NO ACTION" :
-											(foreign_keys[i].on_update == CASCADE ? "CASCADE" :
-												(foreign_keys[i].on_update == SET_NULL ? "SET_NULL" : "RESTRICT")))
-									);
-								}
+								sprintf(foreign_keys[i].to_string,
+									"FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE %s ON UPDATE %s,",
+									foreign_keys[i].name,
+									foreign_keys[i].table,
+									foreign_keys[i].field,
+									(foreign_keys[i].on_delete == NO_ACTION ? "NO ACTION" :
+										(foreign_keys[i].on_delete == CASCADE ? "CASCADE" :
+											(foreign_keys[i].on_delete == SET_NULL ? "SET_NULL" : "RESTRICT"))),
+									(foreign_keys[i].on_update == NO_ACTION ? "NO ACTION" :
+										(foreign_keys[i].on_update == CASCADE ? "CASCADE" :
+											(foreign_keys[i].on_update == SET_NULL ? "SET_NULL" : "RESTRICT")))
+								);
+
+								str_collapse_spaces(foreign_keys[i].to_string);
+								if (fkbuffer[0])
+									sprintf(fkbuffer, "%s\n  %s", fkbuffer, foreign_keys[i].to_string);
+								else
+									sprintf(fkbuffer, "%s", foreign_keys[i].to_string);
 							}
 						}
 
@@ -2117,25 +2104,22 @@ void run_table_create() {
 						int ilen = strlen(indbuffer);
 						int flen = strlen(fkbuffer);
 						if (flen > 0) {
-							if (fkbuffer[flen - 2] == ',')
-								fkbuffer[flen - 2] = '\n';
+							if (fkbuffer[flen - 1] == ',')
+								fkbuffer[flen - 1] = ' ';
 						} else if (ilen > 0) {
-							if (indbuffer[ilen - 2] == ',')
-								indbuffer[ilen - 2] = '\n';
+							if (indbuffer[ilen - 1] == ',')
+								indbuffer[ilen - 1] = ' ';
 						} else if (clen > 0) {
-							if (colbuffer[clen - 2] == ',')
-								colbuffer[clen - 2] = '\n';
+							if (colbuffer[clen - 1] == ',')
+								colbuffer[clen - 1] = ' ';
 						}
-						str_collapse_spaces(colbuffer);
-						str_collapse_spaces(indbuffer);
-						str_collapse_spaces(fkbuffer);
 
 						set_queryf(
 							"CREATE TABLE %s (\n"
 							"  %s\n"
 							"  %s\n"
 							"  %s\n"
-							")\n",
+							")",
 							tbl_name,
 							colbuffer,
 							indbuffer,
