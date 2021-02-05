@@ -60,6 +60,7 @@ char db_name[DB_NAME_LEN];
 
 #define QUERY_HIST_LEN	10
 #define QUERY_MAX	4096
+int query_history_len = 0, query_history_pos = 0;
 char query_history[QUERY_HIST_LEN][QUERY_MAX];
 char the_query[QUERY_MAX];
 MYSQL_RES* the_result = NULL;
@@ -761,9 +762,39 @@ void refresh_tables() {
 		tbl_index = maxi(0, tbl_count - 1); // default to first table
 }
 
+void shift_history() {
+	query_history_len = clampi(query_history_len + 1, 0, QUERY_HIST_LEN);
+	xlogf("HISTORY A METRICS len=%d pos=%d\n", query_history_len, query_history_pos);
+
+	// TODO this is not working, its replicating position 1 to all after positions
+	// it needs to shift everything back one position
+	// so it needs to copy the 4 to 5, 3 to 4, 2 to 3 etc
+	for (int i=query_history_len; i > 0; i--) {
+		xlogf("> HSHIFT %d TO %d\n", i-1, i);
+		strncpy(query_history[i], query_history[i-1], QUERY_MAX);
+	}
+	//for (int i=0; i < query_history_len - 1; i++) {
+	//	xlogf("> HSHIFT %d TO %d\n", i, i+1);
+	//	strncpy(query_history[i+1], query_history[i], QUERY_MAX);
+	//}
+
+	xlogf("HIST SAVE NEW [%d]%s\n", 0, the_query);
+	strncpy(query_history[0], the_query, QUERY_MAX);
+
+	xlog("HISTORY:");
+	for (int i=0; i < query_history_len; i++) {
+		xlogf("  HISTORY[%d] = %s\n", i, query_history[i]);
+	}
+
+	query_history_pos = 0;
+	xlogf("HISTORY B METRICS len=%d pos=%d\n", query_history_len, query_history_pos);
+}
+
 void set_query(char *query) {
+	// save it to the currenty query
 	strclr(the_query, QUERY_MAX);
 	strcpy(the_query, query);
+	shift_history();
 }
 
 void set_queryf(char *format, ...) {
@@ -773,6 +804,18 @@ void set_queryf(char *format, ...) {
 	va_start(argptr, format);
 	vsprintf(the_query, format, argptr);
 	va_end(argptr);
+
+	shift_history();
+}
+
+void set_query_to_history(int pos) {
+	if (query_history_len > 0) {
+		query_history_pos = wrapi(query_history_pos - pos, 0, query_history_len - 1);
+		xlogf("HISTMOVE: len=%d pos=%d\n", query_history_len, query_history_pos);
+		// save it to the currenty query
+		strclr(the_query, QUERY_MAX);
+		strcpy(the_query, query_history[query_history_pos]);
+	}
 }
 
 int calc_result_pad_width();
@@ -780,12 +823,7 @@ int calc_result_pad_height();
 
 void execute_query(bool clear) {
 
-	// shift on to history
-	//for (int i=1; i < QUERY_HIST_LEN; i++) {
-	//	strncpy(query_history[i - 1], query_history[i], QUERY_MAX);
-	//}
-	//strncpy(query_history[QUERY_HIST_LEN - 1], the_query, QUERY_MAX);
-
+	// EXECUTE THE QUERY!!
 	xlog(the_query);
 	the_result = db_query(selected_mysql_conn, the_query, &the_num_fields, &the_num_rows, &the_aff_rows, &the_err_code);
 	if (!the_result && the_err_code > 0) { // inserts have null responses
@@ -925,8 +963,8 @@ MYSQL_FIELD* get_focus_field() {
 int get_min_cell_size(MYSQL_FIELD *f) {
 	unsigned long max_field_length = maxi(5, maxi(f->max_length, f->name_length)); // size of biggest value in column
 	// max size of the field is 32 characters rendered
-	if (max_field_length > 32)
-		max_field_length = 32;
+	if (max_field_length > 64)
+		max_field_length = 64;
 
 	// min size is 6 so we can support "empty" data
 	if (max_field_length < 5)
@@ -2364,7 +2402,7 @@ void run_db_interact(MYSQL *con) {
 
 					// command bar
 					if (query_state == QUERY_STATE_COMMAND)
-						display_cmdf("QUERY", 5, "[i]{e}dit", "[ent]execute", "[del]clear", "[tab]mode", "e{x}it");// "e/i:edit | enter:execute | del:clear | tab:next | x:close");
+						display_cmdf("QUERY", 5, "[i]{e}dit", "[ent]execute", "[del]clear", "[up|down]history", "[tab]mode", "e{x}it");
 					else
 						display_cmdf("EDIT QUERY", 1, "[^x|esc]done");// "ctrl+x/esc:no-edit | tab:next | x:close");
 					break;
@@ -2600,6 +2638,14 @@ void run_db_interact(MYSQL *con) {
 							case KEY_e:
 								// Insert mode
 								query_state = QUERY_STATE_EDIT;
+								break;
+							case KEY_DOWN:
+								// shift back to history
+								set_query_to_history(-1);
+								break;
+							case KEY_UP:
+								// shift up history
+								set_query_to_history(+1);
 								break;
 						}
 					} else if(query_state == QUERY_STATE_EDIT) {
